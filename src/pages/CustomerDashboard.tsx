@@ -1,0 +1,168 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import DashboardLayout from '../components/DashboardLayout';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import api from '../lib/api';
+import toast from 'react-hot-toast';
+import { Calendar, MapPin, CreditCard, Clock, ArrowRight } from 'lucide-react';
+
+interface Service {
+  _id: string;
+  name: string;
+  category: string;
+  price: number;
+  duration: number;
+}
+
+interface Booking {
+  _id: string;
+  serviceId: Service;
+  status: string;
+  paymentMethod: string;
+  scheduledDate: string;
+  address: string;
+  createdAt: string;
+}
+
+export default function CustomerDashboard() {
+  const navigate = useNavigate();
+  const [services, setServices] = useState<Service[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    loadServices();
+    loadBookings();
+  }, []);
+
+  const loadServices = async () => {
+    try {
+      const response = await api.get('/services');
+      setServices(response.data);
+    } catch (error) {
+      toast.error('Failed to load services');
+    }
+  };
+
+  const loadBookings = async () => {
+    try {
+      const response = await api.get('/bookings');
+      setBookings(response.data);
+    } catch (error) {
+      toast.error('Failed to load bookings');
+    }
+  };
+
+
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      assigned_to_partner: 'bg-blue-100 text-blue-800',
+      assigned_to_employee: 'bg-purple-100 text-purple-800',
+      in_progress: 'bg-orange-100 text-orange-800',
+      completed: 'bg-green-100 text-green-800',
+      cancelled: 'bg-red-100 text-red-800',
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  return (
+    <DashboardLayout title="Customer">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Dashboard</h1>
+        <p className="text-gray-600">Book and manage your home services</p>
+      </div>
+
+      {/* Services */}
+      <Card className="p-6 mb-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-2xl font-semibold">Available Services</h2>
+            <p className="text-gray-600 mt-1">Select a service to view details and book</p>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {services.map((service) => (
+            <div
+              key={service._id}
+              className="border rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer group"
+              onClick={() => navigate(`/service/${service._id}`)}
+            >
+              <div className="mb-4">
+                <h3 className="text-xl font-semibold mb-2 group-hover:text-primary-600 transition-colors">
+                  {service.name}
+                </h3>
+                <p className="text-sm text-gray-600 mb-3">{service.category}</p>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-2xl font-bold text-primary-600">${service.price}</p>
+                  </div>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <Clock className="w-4 h-4 mr-1" />
+                    {service.duration} hrs
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full group-hover:bg-primary-600 group-hover:text-white transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/service/${service._id}`);
+                }}
+              >
+                View Details
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        {services.length === 0 && (
+          <p className="text-center text-gray-500 py-8">No services available</p>
+        )}
+      </Card>
+
+      {/* Bookings */}
+      <Card className="p-6">
+        <h2 className="text-xl font-semibold mb-4">My Bookings</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left p-2">Service</th>
+                <th className="text-left p-2">Date</th>
+                <th className="text-left p-2">Address</th>
+                <th className="text-left p-2">Payment</th>
+                <th className="text-left p-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bookings.map((booking) => (
+                <tr key={booking._id} className="border-b hover:bg-gray-50">
+                  <td className="p-2">{booking.serviceId?.name}</td>
+                  <td className="p-2">
+                    {new Date(booking.scheduledDate).toLocaleDateString()}
+                  </td>
+                  <td className="p-2">{booking.address}</td>
+                  <td className="p-2">
+                    {booking.paymentMethod === 'cash' ? 'COD' : 'Online'}
+                  </td>
+                  <td className="p-2">
+                    <span className={`px-2 py-1 rounded text-xs ${getStatusColor(booking.status)}`}>
+                      {booking.status.replace(/_/g, ' ')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {bookings.length === 0 && (
+            <p className="text-center text-gray-500 py-8">No bookings yet</p>
+          )}
+        </div>
+      </Card>
+    </DashboardLayout>
+  );
+}
+
