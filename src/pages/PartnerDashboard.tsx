@@ -2,18 +2,36 @@ import { useEffect, useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { Users, DollarSign, Calendar } from 'lucide-react';
+import { Users, DollarSign, Calendar, Bell, CheckCircle, XCircle } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
 
 interface Booking {
   _id: string;
-  customerId: { name: string; email: string };
-  serviceId: { name: string; price: number };
+  customerId: { name: string; email: string; phone?: string };
+  serviceId: { name: string; price: number; category: string };
   status: string;
   assignedToEmployee?: { name: string; _id: string };
   assignedEmployees?: Array<{ name: string; _id: string }>;
   scheduledDate: string;
+  address: string;
+  paymentMethod: string;
+  totalAmount?: number;
+  hours?: number;
+  numberOfPeople?: number;
+  selectedExtras?: Array<{ name: string; price: number }>;
+}
+
+interface Notification {
+  _id: string;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  bookingId?: string;
 }
 
 interface Employee {
@@ -38,17 +56,53 @@ interface RevenueData {
 }
 
 export default function PartnerDashboard() {
+  const { user, setUser } = useAuthStore();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [revenue, setRevenue] = useState<RevenueData | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
   const [selectedBooking, setSelectedBooking] = useState<string>('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [showDeclineModal, setShowDeclineModal] = useState<string>('');
+  const [declineReason, setDeclineReason] = useState<string>('');
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateRequestSubmitted, setUpdateRequestSubmitted] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    address: (user as any)?.address || '',
+    companyDescription: (user as any)?.companyDescription || '',
+  });
 
   useEffect(() => {
+    loadUserData();
     loadBookings();
     loadEmployees();
     loadRevenue();
+    loadNotifications();
+    const interval = setInterval(() => {
+      loadBookings();
+      loadNotifications();
+    }, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
   }, []);
+
+  const loadUserData = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      const userData = response.data.user;
+      setUser(userData);
+      setProfileForm({
+        name: userData.name || '',
+        phone: userData.phone || '',
+        address: userData.address || '',
+        companyDescription: userData.companyDescription || '',
+      });
+    } catch (error) {
+      console.error('Failed to load user data');
+    }
+  };
 
   const loadRevenue = async () => {
     try {
@@ -74,6 +128,90 @@ export default function PartnerDashboard() {
       setEmployees(response.data);
     } catch (error) {
       toast.error('Failed to load employees');
+    }
+  };
+
+  const loadNotifications = async () => {
+    try {
+      const response = await api.get('/notifications');
+      setNotifications(response.data);
+      const unreadResponse = await api.get('/notifications/unread-count');
+      setUnreadCount(unreadResponse.data.count);
+    } catch (error) {
+      console.error('Failed to load notifications');
+    }
+  };
+
+  const markNotificationRead = async (id: string) => {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      loadNotifications();
+    } catch (error) {
+      console.error('Failed to mark notification as read');
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await api.put('/notifications/read-all');
+      loadNotifications();
+    } catch (error) {
+      console.error('Failed to mark all as read');
+    }
+  };
+
+  const handleAcceptOrder = async (bookingId: string) => {
+    try {
+      await api.put(`/bookings/${bookingId}/accept`);
+      toast.success('Order accepted');
+      loadBookings();
+      loadNotifications();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to accept order');
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const response = await api.put('/auth/partner/profile', {
+        ...profileForm,
+        markCompleted: !user?.profileCompleted, // Only mark completed if not already completed
+      });
+      
+      if (user?.isVerified) {
+        // After verification, this creates an update request
+        toast.success('Profile update request submitted. Waiting for admin approval.');
+        setUpdateRequestSubmitted(true);
+        setShowUpdateModal(false);
+      } else {
+        // Before verification, this updates directly
+        toast.success('Profile saved successfully');
+        if (response.data.profileCompleted) {
+          toast.success('Profile completed! Waiting for admin verification.');
+        }
+      }
+      
+      // Update auth store user with latest data
+      await loadUserData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    }
+  };
+
+  const handleDeclineOrder = async () => {
+    if (!declineReason.trim()) {
+      toast.error('Please provide a reason for declining');
+      return;
+    }
+    try {
+      await api.put(`/bookings/${showDeclineModal}/decline`, { reason: declineReason });
+      toast.success('Order declined');
+      setShowDeclineModal('');
+      setDeclineReason('');
+      loadBookings();
+      loadNotifications();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to decline order');
     }
   };
 
@@ -119,8 +257,168 @@ export default function PartnerDashboard() {
     <DashboardLayout title="Partner">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Partner Dashboard</h1>
-        <p className="text-gray-600">Manage your assigned jobs and employees</p>
+        <p className="text-gray-600">Manage your company profile, assigned jobs, and employees</p>
       </div>
+
+      {/* Company Profile */}
+      <Card className="p-6 mb-6">
+        {!user?.profileCompleted && (
+          <div className="mb-4 rounded border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+            <p className="font-semibold mb-1">Complete your company profile</p>
+            <p>
+              Orders will not be assigned to you until your profile is completed and approved by admin.
+            </p>
+          </div>
+        )}
+        {user?.profileCompleted && !user?.isVerified && (
+          <div className="mb-4 rounded border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <p className="font-semibold mb-1">Profile Completed - Awaiting Verification</p>
+            <p>Your profile has been submitted and is waiting for admin verification.</p>
+          </div>
+        )}
+        {updateRequestSubmitted && (
+          <div className="mb-4 rounded border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+            <p className="font-semibold mb-1">Update Request Submitted</p>
+            <p>Your profile update request has been sent to admin for approval.</p>
+          </div>
+        )}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Company Profile</h2>
+          {user?.isVerified && (
+            <Button onClick={() => {
+              setShowUpdateModal(true);
+              setUpdateRequestSubmitted(false);
+            }}>
+              Update Profile
+            </Button>
+          )}
+        </div>
+
+        {!user?.profileCompleted ? (
+          // Show form if profile not completed
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Company Name</label>
+              <Input
+                type="text"
+                value={profileForm.name}
+                onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Contact Phone</label>
+              <Input
+                type="text"
+                value={profileForm.phone}
+                onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">Company Address</label>
+              <Input
+                type="text"
+                value={profileForm.address}
+                onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">About Your Company</label>
+              <textarea
+                className="w-full border rounded p-2 text-sm"
+                rows={3}
+                value={profileForm.companyDescription}
+                onChange={(e) =>
+                  setProfileForm({ ...profileForm, companyDescription: e.target.value })
+                }
+                placeholder="Describe your services, experience, or service areas..."
+              />
+            </div>
+          </div>
+        ) : (
+          // Show read-only view if profile completed
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-600">Company Name</label>
+              <p className="text-gray-900">{profileForm.name || '-'}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-600">Contact Phone</label>
+              <p className="text-gray-900">{profileForm.phone || '-'}</p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1 text-gray-600">Company Address</label>
+              <p className="text-gray-900">{profileForm.address || '-'}</p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1 text-gray-600">About Your Company</label>
+              <p className="text-gray-900 whitespace-pre-wrap">{profileForm.companyDescription || '-'}</p>
+            </div>
+          </div>
+        )}
+
+        {!user?.profileCompleted && (
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleSaveProfile}>Save Profile</Button>
+          </div>
+        )}
+      </Card>
+
+      {/* Update Profile Modal */}
+      {showUpdateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">Update Company Profile</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Company Name</label>
+                <Input
+                  type="text"
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Contact Phone</label>
+                <Input
+                  type="text"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-1">Company Address</label>
+                <Input
+                  type="text"
+                  value={profileForm.address}
+                  onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-1">About Your Company</label>
+                <textarea
+                  className="w-full border rounded p-2 text-sm"
+                  rows={3}
+                  value={profileForm.companyDescription}
+                  onChange={(e) =>
+                    setProfileForm({ ...profileForm, companyDescription: e.target.value })
+                  }
+                  placeholder="Describe your services, experience, or service areas..."
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => {
+                setShowUpdateModal(false);
+                loadUserData(); // Reset form to current values
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveProfile}>Submit Update Request</Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid md:grid-cols-3 gap-4 mb-6">
@@ -218,6 +516,129 @@ export default function PartnerDashboard() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Notifications */}
+      {unreadCount > 0 && (
+        <Card className="p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              Notifications ({unreadCount})
+            </h2>
+            <Button size="sm" variant="outline" onClick={markAllRead}>
+              Mark All Read
+            </Button>
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {notifications.slice(0, 10).map((notif) => (
+              <div
+                key={notif._id}
+                className={`p-3 border rounded cursor-pointer hover:bg-gray-50 ${
+                  !notif.isRead ? 'bg-blue-50 border-blue-200' : ''
+                }`}
+                onClick={() => {
+                  if (!notif.isRead) markNotificationRead(notif._id);
+                }}
+              >
+                <p className="font-semibold text-sm">{notif.title}</p>
+                <p className="text-sm text-gray-600">{notif.message}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(notif.createdAt).toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* New Orders */}
+      {bookings.filter(b => b.status === 'assigned_to_partner' && !b.assignedToEmployee).length > 0 && (
+        <Card className="p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">New Orders</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-2">Customer</th>
+                  <th className="text-left p-2">Service</th>
+                  <th className="text-left p-2">Amount</th>
+                  <th className="text-left p-2">Date</th>
+                  <th className="text-left p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings
+                  .filter(b => b.status === 'assigned_to_partner' && !b.assignedToEmployee)
+                  .map((booking) => (
+                    <tr key={booking._id} className="border-b hover:bg-gray-50">
+                      <td className="p-2">
+                        <div>
+                          <p className="font-medium">{booking.customerId?.name}</p>
+                          <p className="text-xs text-gray-500">{booking.customerId?.email}</p>
+                        </div>
+                      </td>
+                      <td className="p-2">
+                        <div>
+                          <p className="font-medium">{booking.serviceId?.name}</p>
+                          <p className="text-xs text-gray-500">{booking.serviceId?.category}</p>
+                        </div>
+                      </td>
+                      <td className="p-2">${booking.totalAmount?.toFixed(2) || booking.serviceId?.price.toFixed(2)}</td>
+                      <td className="p-2">
+                        {new Date(booking.scheduledDate).toLocaleDateString()}
+                      </td>
+                      <td className="p-2">
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleAcceptOrder(booking._id)}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => setShowDeclineModal(booking._id)}
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Decline
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Decline Modal */}
+      {showDeclineModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Decline Order</h3>
+            <p className="text-sm text-gray-600 mb-4">Please provide a reason for declining this order:</p>
+            <textarea
+              className="w-full border rounded p-2 mb-4"
+              rows={4}
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              placeholder="Enter reason for declining..."
+            />
+            <div className="flex gap-2">
+              <Button onClick={handleDeclineOrder}>Submit</Button>
+              <Button variant="outline" onClick={() => {
+                setShowDeclineModal('');
+                setDeclineReason('');
+              }}>
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* Assigned Bookings */}

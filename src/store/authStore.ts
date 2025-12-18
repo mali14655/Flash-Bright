@@ -8,6 +8,8 @@ interface User {
   role: 'customer' | 'admin' | 'partner' | 'employee';
   companyId?: string;
   phone?: string;
+  profileCompleted?: boolean;
+  isVerified?: boolean;
 }
 
 interface AuthState {
@@ -16,7 +18,7 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, role: string) => Promise<void>;
+  register: (email: string, password: string, name: string, role: string, registrationCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   setUser: (user: User | null) => void;
@@ -42,10 +44,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  register: async (email: string, password: string, name: string, role: string) => {
+  register: async (email: string, password: string, name: string, role: string, registrationCode?: string) => {
     set({ isLoading: true });
     try {
-      const response = await api.post('/auth/register', { email, password, name, role });
+      const payload: any = { email, password, name, role };
+      if (registrationCode) {
+        payload.registrationCode = registrationCode;
+      }
+      const response = await api.post('/auth/register', payload);
       const { user, token } = response.data;
       localStorage.setItem('token', token);
       set({ user, token, isAuthenticated: true, isLoading: false });

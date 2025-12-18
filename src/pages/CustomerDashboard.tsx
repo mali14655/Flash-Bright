@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { Calendar, MapPin, CreditCard, Clock, ArrowRight } from 'lucide-react';
+import { Calendar, MapPin, CreditCard, Clock, ArrowRight, AlertCircle, RefreshCw, DollarSign } from 'lucide-react';
 
 interface Service {
   _id: string;
@@ -23,16 +24,28 @@ interface Booking {
   scheduledDate: string;
   address: string;
   createdAt: string;
+  isExpired?: boolean;
+  totalAmount?: number;
+}
+
+interface ExpiredBooking extends Booking {
+  serviceId: Service;
+  totalAmount: number;
+  paymentMethod: string;
 }
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
   const [services, setServices] = useState<Service[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [expiredBookings, setExpiredBookings] = useState<ExpiredBooking[]>([]);
+  const [showRescheduleModal, setShowRescheduleModal] = useState<string>('');
+  const [newScheduledDate, setNewScheduledDate] = useState<string>('');
 
   useEffect(() => {
     loadServices();
     loadBookings();
+    loadExpiredBookings();
   }, []);
 
   const loadServices = async () => {
@@ -47,9 +60,49 @@ export default function CustomerDashboard() {
   const loadBookings = async () => {
     try {
       const response = await api.get('/bookings');
-      setBookings(response.data);
+      // Filter out expired bookings from regular bookings
+      setBookings(response.data.filter((b: Booking) => !b.isExpired && b.status !== 'expired'));
     } catch (error) {
       toast.error('Failed to load bookings');
+    }
+  };
+
+  const loadExpiredBookings = async () => {
+    try {
+      const response = await api.get('/bookings/expired/customer');
+      setExpiredBookings(response.data);
+    } catch (error) {
+      console.error('Failed to load expired bookings');
+    }
+  };
+
+  const handleReschedule = async (bookingId: string) => {
+    if (!newScheduledDate) {
+      toast.error('Please select a new date and time');
+      return;
+    }
+    try {
+      await api.put(`/bookings/${bookingId}/reschedule`, { newScheduledDate });
+      toast.success('Order rescheduled successfully');
+      setShowRescheduleModal('');
+      setNewScheduledDate('');
+      loadBookings();
+      loadExpiredBookings();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to reschedule order');
+    }
+  };
+
+  const handleRequestRefund = async (bookingId: string) => {
+    if (!confirm('Are you sure you want to request a refund for this expired order?')) {
+      return;
+    }
+    try {
+      await api.post('/refunds', { bookingId, reason: 'Order expired - customer requested refund' });
+      toast.success('Refund request submitted. Admin will process it soon.');
+      loadExpiredBookings();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to request refund');
     }
   };
 
@@ -122,6 +175,85 @@ export default function CustomerDashboard() {
           <p className="text-center text-gray-500 py-8">No services available</p>
         )}
       </Card>
+
+      {/* Expired Orders */}
+      {expiredBookings.length > 0 && (
+        <Card className="p-6 mb-6 border-red-200 bg-red-50">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle className="w-5 h-5 text-red-600" />
+            <h2 className="text-xl font-semibold text-red-900">Expired Orders</h2>
+          </div>
+          <p className="text-sm text-red-700 mb-4">
+            These orders have passed their scheduled time. Please reschedule or request a refund.
+          </p>
+          <div className="space-y-4">
+            {expiredBookings.map((booking) => (
+              <div key={booking._id} className="border border-red-300 rounded p-4 bg-white">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-semibold">{booking.serviceId?.name}</h3>
+                    <p className="text-sm text-gray-600">
+                      Scheduled: {new Date(booking.scheduledDate).toLocaleString()}
+                    </p>
+                    <p className="text-sm text-gray-600">Amount: ${booking.totalAmount?.toFixed(2) || '0.00'}</p>
+                    <p className="text-sm text-gray-600">Payment: {booking.paymentMethod === 'cash' ? 'COD' : 'Online'}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setShowRescheduleModal(booking._id);
+                      setNewScheduledDate('');
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                    Re-time
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleRequestRefund(booking._id)}
+                  >
+                    <DollarSign className="w-4 h-4 mr-1" />
+                    Request Refund
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Reschedule Modal */}
+      {showRescheduleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Reschedule Order</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">New Date & Time *</label>
+              <Input
+                type="datetime-local"
+                value={newScheduledDate}
+                onChange={(e) => setNewScheduledDate(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => handleReschedule(showRescheduleModal)}>
+                Reschedule
+              </Button>
+              <Button variant="outline" onClick={() => {
+                setShowRescheduleModal('');
+                setNewScheduledDate('');
+              }}>
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Bookings */}
       <Card className="p-6">

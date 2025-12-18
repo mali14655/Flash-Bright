@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import CustomerDashboard from './pages/CustomerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminCompanyDetails from './pages/AdminCompanyDetails';
 import PartnerDashboard from './pages/PartnerDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import ServiceDetails from './pages/ServiceDetails';
@@ -47,6 +48,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/companies/:id"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminCompanyDetails />
             </ProtectedRoute>
           }
         />

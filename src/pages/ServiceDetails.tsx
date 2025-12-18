@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Clock, DollarSign, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Clock, DollarSign, CheckCircle, Users } from 'lucide-react';
 
 interface Service {
   _id: string;
@@ -15,6 +15,11 @@ interface Service {
   price: number;
   duration: number;
   description: string;
+  image: string;
+  perHourFee: number;
+  perPersonFee: number;
+  hasExtraRequirements: boolean;
+  extraRequirements: Array<{ name: string; price: number }>;
 }
 
 export default function ServiceDetails() {
@@ -27,11 +32,21 @@ export default function ServiceDetails() {
     address: '',
     paymentMethod: 'online',
     notes: '',
+    hours: 1,
+    numberOfPeople: 1,
+    selectedExtras: [] as string[],
   });
+  const [totalAmount, setTotalAmount] = useState(0);
 
   useEffect(() => {
     loadService();
   }, [id]);
+
+  useEffect(() => {
+    if (service) {
+      calculateTotal();
+    }
+  }, [service, bookingData.hours, bookingData.numberOfPeople, bookingData.selectedExtras]);
 
   const loadService = async () => {
     try {
@@ -43,12 +58,41 @@ export default function ServiceDetails() {
     }
   };
 
+  const calculateTotal = () => {
+    if (!service) return;
+    let total = service.price || 0;
+    if (service.perHourFee > 0) {
+      total += service.perHourFee * bookingData.hours;
+    }
+    if (service.perPersonFee > 0) {
+      total += service.perPersonFee * bookingData.numberOfPeople;
+    }
+    bookingData.selectedExtras.forEach((extraName) => {
+      const extra = service.extraRequirements.find(e => e.name === extraName);
+      if (extra) {
+        total += extra.price;
+      }
+    });
+    setTotalAmount(total);
+  };
+
   const handleBookService = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const selectedExtrasData = bookingData.selectedExtras.map(name => {
+        const extra = service?.extraRequirements.find(e => e.name === name);
+        return extra ? { name: extra.name, price: extra.price } : null;
+      }).filter(Boolean) as Array<{ name: string; price: number }>;
+
       await api.post('/bookings', {
         serviceId: id,
-        ...bookingData,
+        scheduledDate: bookingData.scheduledDate,
+        address: bookingData.address,
+        paymentMethod: bookingData.paymentMethod,
+        notes: bookingData.notes,
+        hours: bookingData.hours,
+        numberOfPeople: bookingData.numberOfPeople,
+        selectedExtras: selectedExtrasData,
       });
       toast.success('Booking created successfully! Your request has been sent to admin.');
       navigate('/customer');
@@ -80,6 +124,9 @@ export default function ServiceDetails() {
         </Button>
 
         <Card className="p-6 mb-6">
+          {service.image && (
+            <img src={service.image} alt={service.name} className="w-full h-64 object-cover rounded-lg mb-6" />
+          )}
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{service.name}</h1>
             <p className="text-primary-600 font-medium">{service.category}</p>
@@ -91,7 +138,7 @@ export default function ServiceDetails() {
                 <DollarSign className="w-6 h-6 text-primary-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Price</p>
+                <p className="text-sm text-gray-600">Base Price</p>
                 <p className="text-2xl font-bold text-gray-900">${service.price}</p>
               </div>
             </div>
@@ -104,6 +151,28 @@ export default function ServiceDetails() {
                 <p className="text-2xl font-bold text-gray-900">{service.duration} hours</p>
               </div>
             </div>
+            {service.perHourFee > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-primary-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Per Hour Fee</p>
+                  <p className="text-2xl font-bold text-gray-900">${service.perHourFee}</p>
+                </div>
+              </div>
+            )}
+            {service.perPersonFee > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-primary-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Per Person Fee</p>
+                  <p className="text-2xl font-bold text-gray-900">${service.perPersonFee}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {service.description && (
@@ -156,6 +225,68 @@ export default function ServiceDetails() {
                       ? 'Pay securely online with your card'
                       : 'Pay cash when the service is completed'}
                   </p>
+                </div>
+                {service.perHourFee > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Number of Hours *</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={bookingData.hours}
+                      onChange={(e) => setBookingData({ ...bookingData, hours: parseInt(e.target.value) || 1 })}
+                      required
+                    />
+                  </div>
+                )}
+                {service.perPersonFee > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Number of People *</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={bookingData.numberOfPeople}
+                      onChange={(e) => setBookingData({ ...bookingData, numberOfPeople: parseInt(e.target.value) || 1 })}
+                      required
+                    />
+                  </div>
+                )}
+                {service.hasExtraRequirements && service.extraRequirements.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Extra Requirements</label>
+                    <div className="space-y-2">
+                      {service.extraRequirements.map((extra, idx) => (
+                        <label key={idx} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={bookingData.selectedExtras.includes(extra.name)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setBookingData({
+                                  ...bookingData,
+                                  selectedExtras: [...bookingData.selectedExtras, extra.name]
+                                });
+                              } else {
+                                setBookingData({
+                                  ...bookingData,
+                                  selectedExtras: bookingData.selectedExtras.filter(name => name !== extra.name)
+                                });
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          <span className="text-sm">
+                            {extra.name} - ${extra.price}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="border-t pt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-lg font-semibold">Total Amount:</span>
+                    <span className="text-2xl font-bold text-primary-600">${totalAmount.toFixed(2)}</span>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Special Instructions (Optional)</label>

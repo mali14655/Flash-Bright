@@ -12,6 +12,7 @@ export default function Register() {
     email: '',
     password: '',
     role: 'customer',
+    registrationCode: '',
   });
   const { register, isLoading } = useAuthStore();
   const navigate = useNavigate();
@@ -19,7 +20,13 @@ export default function Register() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await register(formData.email, formData.password, formData.name, formData.role);
+      await register(
+        formData.email,
+        formData.password,
+        formData.name,
+        formData.role,
+        formData.role === 'partner' ? formData.registrationCode : undefined
+      );
       toast.success('Registration successful!');
       navigate(`/${formData.role}`);
     } catch (error: any) {
@@ -83,7 +90,7 @@ export default function Register() {
             <select
               id="role"
               value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, role: e.target.value, registrationCode: '' })}
               className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               required
             >
@@ -92,6 +99,21 @@ export default function Register() {
               <option value="employee">Employee</option>
             </select>
           </div>
+
+          {formData.role === 'partner' && (
+            <div>
+              <label htmlFor="registrationCode" className="block text-sm font-medium text-gray-700 mb-1">
+                Registration Code (provided by admin)
+              </label>
+              <Input
+                id="registrationCode"
+                type="text"
+                value={formData.registrationCode}
+                onChange={(e) => setFormData({ ...formData, registrationCode: e.target.value.toUpperCase() })}
+                required
+              />
+            </div>
+          )}
 
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? 'Creating account...' : 'Sign Up'}
