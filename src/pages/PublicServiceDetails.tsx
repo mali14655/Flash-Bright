@@ -13,16 +13,16 @@ import { translateService, useTranslator } from '../lib/translator';
 
 interface Service {
   _id: string;
-  name: string;
-  category: string;
+  name: string | { en: string; ar?: string };
+  category: string | { en: string; ar?: string };
   price: number;
   duration: number;
-  description: string;
+  description: string | { en: string; ar?: string };
   image: string;
   perHourFee: number;
   perPersonFee: number;
   hasExtraRequirements: boolean;
-  extraRequirements: Array<{ name: string; price: number }>;
+  extraRequirements: Array<{ name: string | { en: string; ar?: string }; price: number }>;
 }
 
 export default function PublicServiceDetails() {
@@ -108,9 +108,12 @@ export default function PublicServiceDetails() {
         if (extra) {
           // Store the original name (could be object or string)
           const extraName = extra.name;
-          const originalName = typeof extraName === 'object' 
-            ? (extraName.en || extraName.ar || JSON.stringify(extraName)) 
-            : extraName;
+          let originalName: string;
+          if (typeof extraName === 'object' && extraName !== null) {
+            originalName = extraName.en || extraName.ar || JSON.stringify(extraName);
+          } else {
+            originalName = extraName as string;
+          }
           return { name: originalName, price: extra.price };
         }
         return null;
