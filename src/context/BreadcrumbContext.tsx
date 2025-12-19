@@ -15,20 +15,10 @@ interface BreadcrumbContextType {
 
 const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(undefined);
 
-// Route configuration for breadcrumb labels
-const routeLabels: Record<string, string> = {
-  '/': 'nav.home',
-  '/services': 'breadcrumb.services',
-  '/about': 'breadcrumb.about',
-  '/login': 'breadcrumb.login',
-  '/register': 'breadcrumb.register',
-};
-
 export function BreadcrumbProvider({ children }: { children: ReactNode }) {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [navigationHistory, setNavigationHistory] = useState<string[]>(['/']);
   const location = useLocation();
-  const navigate = useNavigate();
 
   // Track navigation history
   useEffect(() => {

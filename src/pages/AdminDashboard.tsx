@@ -8,7 +8,7 @@ import api from '../lib/api';
 import toast from 'react-hot-toast';
 import { 
   Users, Calendar, DollarSign, TrendingUp, Building2, Settings, 
-  BarChart3, Package, CheckCircle, XCircle, Bell, ToggleLeft, ToggleRight, AlertCircle, ShieldCheck, FileEdit
+  BarChart3, Package, CheckCircle, XCircle, ToggleLeft, ToggleRight, AlertCircle, ShieldCheck, FileEdit
 } from 'lucide-react';
 
 interface Booking {
@@ -153,7 +153,6 @@ export default function AdminDashboard() {
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [showServiceForm, setShowServiceForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
-  const [editingService, setEditingService] = useState<Service | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<string>('');
   const [selectedPartner, setSelectedPartner] = useState<string>('');
 
@@ -637,7 +636,7 @@ export default function AdminDashboard() {
                 <Button variant="outline" onClick={() => {
                   setShowCompanyForm(false);
                   setEditingCompany(null);
-                  setCompanyForm({ name: '', email: '', password: '', phone: '' });
+                  setCompanyForm({ name: '', email: '', phone: '' });
                 }}>
                   Cancel
                 </Button>
@@ -852,7 +851,7 @@ export default function AdminDashboard() {
                   .filter(approval => approval.action === 'update')
                   .map((approval) => {
                     // Get current company data for comparison
-                    const currentCompany = companies.find(c => c._id === approval.companyId._id);
+                    // const currentCompany = companies.find(c => c._id === approval.companyId._id);
                     return (
                       <div key={approval._id} className="border rounded-lg p-4 bg-white hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-start">

@@ -5,7 +5,6 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Layout from '../components/Layout';
 import api from '../lib/api';
-import toast from 'react-hot-toast';
 import { useLanguage } from '../context/LanguageContext';
 import { translateServices, useTranslator } from '../lib/translator';
 

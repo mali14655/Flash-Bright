@@ -4,7 +4,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { CheckCircle, Clock, MapPin, Calendar } from 'lucide-react';
+import { CheckCircle, MapPin, Calendar } from 'lucide-react';
 
 interface Booking {
   _id: string;

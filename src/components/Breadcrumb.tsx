@@ -12,7 +12,7 @@ interface BreadcrumbProps {
 }
 
 export default function Breadcrumb({ items }: BreadcrumbProps) {
-  const { t, language } = useLanguage();
+  const { language } = useLanguage();
   const isRTL = language === 'ar';
 
   if (items.length === 0) return null;

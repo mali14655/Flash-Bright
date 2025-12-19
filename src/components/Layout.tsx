@@ -24,8 +24,7 @@ export default function Layout({
   children, 
   breadcrumbItems = [],
   showBackButton = false,
-  backButtonPath,
-  backButtonLabel
+  backButtonPath
 }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();

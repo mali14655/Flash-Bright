@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { Calendar, MapPin, CreditCard, Clock, ArrowRight, AlertCircle, RefreshCw, DollarSign } from 'lucide-react';
+import { Clock, ArrowRight, AlertCircle, RefreshCw, DollarSign } from 'lucide-react';
 
 interface Service {
   _id: string;

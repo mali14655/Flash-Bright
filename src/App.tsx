@@ -15,7 +15,6 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminCompanyDetails from './pages/AdminCompanyDetails';
 import PartnerDashboard from './pages/PartnerDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
-import ServiceDetails from './pages/ServiceDetails';
 import PublicServiceDetails from './pages/PublicServiceDetails';
 
 function App() {

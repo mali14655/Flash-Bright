@@ -102,12 +102,15 @@ export default function PublicServiceDetails() {
   const handleBookService = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const selectedExtrasData = bookingData.selectedExtras.map((selectedExtra, idx) => {
+      const selectedExtrasData = bookingData.selectedExtras.map((selectedExtra) => {
         // Find the extra by index since we're storing indices
         const extra = service?.extraRequirements[selectedExtra];
         if (extra) {
           // Store the original name (could be object or string)
-          const originalName = typeof extra.name === 'object' ? (extra.name.en || extra.name.ar || JSON.stringify(extra.name)) : extra.name;
+          const extraName = extra.name;
+          const originalName = typeof extraName === 'object' 
+            ? (extraName.en || extraName.ar || JSON.stringify(extraName)) 
+            : extraName;
           return { name: originalName, price: extra.price };
         }
         return null;
