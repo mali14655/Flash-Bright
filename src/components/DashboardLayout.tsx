@@ -2,8 +2,9 @@ import { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import Button from './ui/Button';
-import { LogOut, Home } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import toast from 'react-hot-toast';
+import logo from '../asssets/logo.jpeg';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -25,7 +26,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
       case 'admin':
         return 'bg-purple-600';
       case 'partner':
-        return 'bg-blue-600';
+        return 'bg-primary-600';
       case 'employee':
         return 'bg-green-600';
       default:
@@ -41,8 +42,8 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               <Link to="/" className="flex items-center gap-2 hover:opacity-80">
-                <Home className="w-5 h-5" />
-                <span className="font-bold text-lg">HomeService Pro</span>
+                <img src={logo} alt="Flash Bright" className="h-8 w-8 rounded-lg object-cover" />
+                <span className="font-bold text-lg">Flash Bright</span>
               </Link>
               <span className="text-sm opacity-90">|</span>
               <span className="text-sm font-medium capitalize">{title} Dashboard</span>

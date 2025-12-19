@@ -3,7 +3,11 @@ import { Toaster } from 'react-hot-toast';
 import { useEffect } from 'react';
 import { useAuthStore } from './store/authStore';
 import ProtectedRoute from './components/ProtectedRoute';
+import { LanguageProvider } from './context/LanguageContext';
+import { BreadcrumbProvider } from './context/BreadcrumbContext';
 import Landing from './pages/Landing';
+import Services from './pages/Services';
+import About from './pages/About';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import CustomerDashboard from './pages/CustomerDashboard';
@@ -22,18 +26,22 @@ function App() {
   }, [checkAuth]);
 
   return (
-    <BrowserRouter>
-      <Toaster position="top-right" />
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route
-          path="/login"
-          element={isAuthenticated ? <Navigate to={`/${user?.role || 'customer'}`} /> : <Login />}
-        />
-        <Route
-          path="/register"
-          element={isAuthenticated ? <Navigate to={`/${user?.role || 'customer'}`} /> : <Register />}
-        />
+    <LanguageProvider>
+      <BrowserRouter>
+        <BreadcrumbProvider>
+          <Toaster position="top-right" />
+          <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/services" element={<Services />} />
+          <Route path="/about" element={<About />} />
+          <Route
+            path="/login"
+            element={isAuthenticated ? <Navigate to={`/${user?.role || 'customer'}`} /> : <Login />}
+          />
+          <Route
+            path="/register"
+            element={isAuthenticated ? <Navigate to={`/${user?.role || 'customer'}`} /> : <Register />}
+          />
         <Route
           path="/customer"
           element={
@@ -76,8 +84,10 @@ function App() {
           }
         />
         <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </BrowserRouter>
+          </Routes>
+        </BreadcrumbProvider>
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }
 

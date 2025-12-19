@@ -4,7 +4,9 @@ import { useAuthStore } from '../store/authStore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
+import Layout from '../components/Layout';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -16,6 +18,7 @@ export default function Register() {
   });
   const { register, isLoading } = useAuthStore();
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,25 +30,29 @@ export default function Register() {
         formData.role,
         formData.role === 'partner' ? formData.registrationCode : undefined
       );
-      toast.success('Registration successful!');
+      toast.success(t('common.success'));
       navigate(`/${formData.role}`);
     } catch (error: any) {
-      toast.error(error.message || 'Registration failed');
+      toast.error(error.message || t('common.error'));
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-white px-4">
-      <Card className="w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h1>
-          <p className="text-gray-600">Sign up to get started</p>
-        </div>
+    <Layout 
+      showBackButton={true}
+    >
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="container mx-auto max-w-md">
+          <Card className="w-full p-8">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('register.title')}</h1>
+            <p className="text-gray-600">{t('register.subtitle')}</p>
+          </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name
+              {t('register.fullName')}
             </label>
             <Input
               id="name"
@@ -58,7 +65,7 @@ export default function Register() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email
+              {t('register.email')}
             </label>
             <Input
               id="email"
@@ -71,7 +78,7 @@ export default function Register() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
+              {t('register.password')}
             </label>
             <Input
               id="password"
@@ -85,7 +92,7 @@ export default function Register() {
 
           <div>
             <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-              Role
+              {t('register.role')}
             </label>
             <select
               id="role"
@@ -94,16 +101,16 @@ export default function Register() {
               className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               required
             >
-              <option value="customer">Customer</option>
-              <option value="partner">Partner</option>
-              <option value="employee">Employee</option>
+              <option value="customer">{t('register.customer')}</option>
+              <option value="partner">{t('register.partner')}</option>
+              <option value="employee">{t('register.employee')}</option>
             </select>
           </div>
 
           {formData.role === 'partner' && (
             <div>
               <label htmlFor="registrationCode" className="block text-sm font-medium text-gray-700 mb-1">
-                Registration Code (provided by admin)
+                {t('register.registrationCode')}
               </label>
               <Input
                 id="registrationCode"
@@ -116,18 +123,20 @@ export default function Register() {
           )}
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Creating account...' : 'Sign Up'}
+            {isLoading ? t('register.creatingAccount') : t('register.signUp')}
           </Button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-600">
-          Already have an account?{' '}
+          {t('register.haveAccount')}{' '}
           <Link to="/login" className="text-primary-600 hover:underline font-medium">
-            Sign in
+            {t('register.signIn')}
           </Link>
         </div>
-      </Card>
-    </div>
+        </Card>
+        </div>
+      </div>
+    </Layout>
   );
 }
 

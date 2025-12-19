@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import Layout from '../components/Layout';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Clock, DollarSign, CheckCircle, Home, Users } from 'lucide-react';
+import { Clock, DollarSign, CheckCircle, Users } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { useBreadcrumb } from '../context/BreadcrumbContext';
+import { translateService, useTranslator } from '../lib/translator';
 
 interface Service {
   _id: string;
@@ -24,6 +28,9 @@ interface Service {
 export default function PublicServiceDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
+  const { translate } = useTranslator();
+  const { addBreadcrumb } = useBreadcrumb();
   const [service, setService] = useState<Service | null>(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [bookingData, setBookingData] = useState({
@@ -36,7 +43,7 @@ export default function PublicServiceDetails() {
     notes: '',
     hours: 1,
     numberOfPeople: 1,
-    selectedExtras: [] as string[],
+    selectedExtras: [] as number[], // Store indices instead of names
   });
   const [totalAmount, setTotalAmount] = useState(0);
 
@@ -53,12 +60,26 @@ export default function PublicServiceDetails() {
   const loadService = async () => {
     try {
       const response = await api.get(`/services/${id}`);
-      setService(response.data);
+      // Translate service based on current language
+      const translatedService = translateService(response.data, language);
+      setService(translatedService);
+      
+      // Add service name to breadcrumb
+      const serviceName = translate(translatedService.name);
+      addBreadcrumb(serviceName, `/service/${id}`);
     } catch (error) {
       toast.error('Failed to load service details');
       navigate('/');
     }
   };
+
+  // Re-translate when language changes and update breadcrumb
+  useEffect(() => {
+    if (service && id) {
+      const serviceName = translate(service.name);
+      addBreadcrumb(serviceName, `/service/${id}`);
+    }
+  }, [language, service, id, translate, addBreadcrumb]);
 
   const calculateTotal = () => {
     if (!service) return;
@@ -69,8 +90,8 @@ export default function PublicServiceDetails() {
     if (service.perPersonFee > 0) {
       total += service.perPersonFee * bookingData.numberOfPeople;
     }
-    bookingData.selectedExtras.forEach((extraName) => {
-      const extra = service.extraRequirements.find(e => e.name === extraName);
+    bookingData.selectedExtras.forEach((extraIdx) => {
+      const extra = service.extraRequirements[extraIdx];
       if (extra) {
         total += extra.price;
       }
@@ -81,9 +102,15 @@ export default function PublicServiceDetails() {
   const handleBookService = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const selectedExtrasData = bookingData.selectedExtras.map(name => {
-        const extra = service?.extraRequirements.find(e => e.name === name);
-        return extra ? { name: extra.name, price: extra.price } : null;
+      const selectedExtrasData = bookingData.selectedExtras.map((selectedExtra, idx) => {
+        // Find the extra by index since we're storing indices
+        const extra = service?.extraRequirements[selectedExtra];
+        if (extra) {
+          // Store the original name (could be object or string)
+          const originalName = typeof extra.name === 'object' ? (extra.name.en || extra.name.ar || JSON.stringify(extra.name)) : extra.name;
+          return { name: originalName, price: extra.price };
+        }
+        return null;
       }).filter(Boolean) as Array<{ name: string; price: number }>;
 
       await api.post('/bookings', {
@@ -120,55 +147,28 @@ export default function PublicServiceDetails() {
 
   if (!service) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="border-b bg-white sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
-            <Link to="/" className="flex items-center gap-2 text-primary-600 font-bold">
-              <Home className="w-5 h-5" />
-              HomeService Pro
-            </Link>
-          </div>
-        </header>
+      <Layout>
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-lg">Loading service details...</div>
+          <div className="text-lg">{t('common.loading')}</div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link to="/" className="flex items-center gap-2 text-primary-600 font-bold text-xl">
-            <Home className="w-5 h-5" />
-            HomeService Pro
-          </Link>
-          <div className="flex gap-4">
-            <Link to="/login">
-              <Button variant="ghost">Login</Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <Layout 
+      showBackButton={true}
+      backButtonLabel={t('services.backToServices')}
+    >
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/')}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Services
-        </Button>
 
         <Card className="p-6 mb-6">
           {service.image && (
-            <img src={service.image} alt={service.name} className="w-full h-64 object-cover rounded-lg mb-6" />
+            <img src={service.image} alt={translate(service.name)} className="w-full h-64 object-cover rounded-lg mb-6" />
           )}
           <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{service.name}</h1>
-            <p className="text-primary-600 font-medium">{service.category}</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{translate(service.name)}</h1>
+            <p className="text-primary-600 font-medium">{translate(service.category)}</p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 mb-6">
@@ -177,7 +177,7 @@ export default function PublicServiceDetails() {
                 <DollarSign className="w-6 h-6 text-primary-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Base Price</p>
+                <p className="text-sm text-gray-600">{t('services.basePrice')}</p>
                 <p className="text-2xl font-bold text-gray-900">${service.price}</p>
               </div>
             </div>
@@ -186,8 +186,8 @@ export default function PublicServiceDetails() {
                 <Clock className="w-6 h-6 text-primary-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Duration</p>
-                <p className="text-2xl font-bold text-gray-900">{service.duration} hours</p>
+                <p className="text-sm text-gray-600">{t('services.duration')}</p>
+                <p className="text-2xl font-bold text-gray-900">{service.duration} {t('services.hours')}</p>
               </div>
             </div>
             {service.perHourFee > 0 && (
@@ -196,7 +196,7 @@ export default function PublicServiceDetails() {
                   <Clock className="w-6 h-6 text-primary-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Per Hour Fee</p>
+                  <p className="text-sm text-gray-600">{t('services.perHourFee')}</p>
                   <p className="text-2xl font-bold text-gray-900">${service.perHourFee}</p>
                 </div>
               </div>
@@ -207,7 +207,7 @@ export default function PublicServiceDetails() {
                   <Users className="w-6 h-6 text-primary-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Per Person Fee</p>
+                  <p className="text-sm text-gray-600">{t('services.perPersonFee')}</p>
                   <p className="text-2xl font-bold text-gray-900">${service.perPersonFee}</p>
                 </div>
               </div>
@@ -216,21 +216,21 @@ export default function PublicServiceDetails() {
 
           {service.description && (
             <div className="mb-6">
-              <h2 className="text-xl font-semibold mb-2">Description</h2>
-              <p className="text-gray-700">{service.description}</p>
+              <h2 className="text-xl font-semibold mb-2">{t('services.description')}</h2>
+              <p className="text-gray-700">{translate(service.description)}</p>
             </div>
           )}
 
           {!showBookingForm ? (
             <Button size="lg" onClick={() => setShowBookingForm(true)} className="w-full">
-              Book This Service
+              {t('services.bookService')}
             </Button>
           ) : (
             <Card className="p-6 bg-gray-50 mt-6">
-              <h2 className="text-xl font-semibold mb-4">Book Service</h2>
+              <h2 className="text-xl font-semibold mb-4">{t('services.bookServiceTitle')}</h2>
               <form onSubmit={handleBookService} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Your Name *</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.yourName')} *</label>
                   <Input
                     type="text"
                     value={bookingData.customerName}
@@ -240,7 +240,7 @@ export default function PublicServiceDetails() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Email *</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.email')} *</label>
                   <Input
                     type="email"
                     value={bookingData.customerEmail}
@@ -250,7 +250,7 @@ export default function PublicServiceDetails() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Phone Number</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.phone')}</label>
                   <Input
                     type="tel"
                     value={bookingData.customerPhone}
@@ -259,7 +259,7 @@ export default function PublicServiceDetails() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Scheduled Date & Time *</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.scheduledDate')} *</label>
                   <Input
                     type="datetime-local"
                     value={bookingData.scheduledDate}
@@ -268,7 +268,7 @@ export default function PublicServiceDetails() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Service Address *</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.serviceAddress')} *</label>
                   <Input
                     type="text"
                     value={bookingData.address}
@@ -278,25 +278,25 @@ export default function PublicServiceDetails() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Payment Method *</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.paymentMethod')} *</label>
                   <select
                     value={bookingData.paymentMethod}
                     onChange={(e) => setBookingData({ ...bookingData, paymentMethod: e.target.value })}
                     className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     required
                   >
-                    <option value="online">Online Payment</option>
-                    <option value="cash">COD (Cash on Delivery)</option>
+                    <option value="online">{t('services.onlinePayment')}</option>
+                    <option value="cash">{t('services.cashPayment')}</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     {bookingData.paymentMethod === 'online'
-                      ? 'Pay securely online with your card'
-                      : 'Pay cash when the service is completed'}
+                      ? t('services.payOnline')
+                      : t('services.payCash')}
                   </p>
                 </div>
                 {service.perHourFee > 0 && (
                   <div>
-                    <label className="block text-sm font-medium mb-1">Number of Hours *</label>
+                    <label className="block text-sm font-medium mb-1">{t('services.numberOfHours')} *</label>
                     <Input
                       type="number"
                       min="1"
@@ -308,7 +308,7 @@ export default function PublicServiceDetails() {
                 )}
                 {service.perPersonFee > 0 && (
                   <div>
-                    <label className="block text-sm font-medium mb-1">Number of People *</label>
+                    <label className="block text-sm font-medium mb-1">{t('services.numberOfPeople')} *</label>
                     <Input
                       type="number"
                       min="1"
@@ -320,44 +320,47 @@ export default function PublicServiceDetails() {
                 )}
                 {service.hasExtraRequirements && service.extraRequirements.length > 0 && (
                   <div>
-                    <label className="block text-sm font-medium mb-1">Extra Requirements</label>
+                    <label className="block text-sm font-medium mb-1">{t('services.extraRequirements')}</label>
                     <div className="space-y-2">
-                      {service.extraRequirements.map((extra, idx) => (
-                        <label key={idx} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={bookingData.selectedExtras.includes(extra.name)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setBookingData({
-                                  ...bookingData,
-                                  selectedExtras: [...bookingData.selectedExtras, extra.name]
-                                });
-                              } else {
-                                setBookingData({
-                                  ...bookingData,
-                                  selectedExtras: bookingData.selectedExtras.filter(name => name !== extra.name)
-                                });
-                              }
-                            }}
-                            className="rounded"
-                          />
-                          <span className="text-sm">
-                            {extra.name} - ${extra.price}
-                          </span>
-                        </label>
-                      ))}
+                      {service.extraRequirements.map((extra, idx) => {
+                        const extraName = translate(extra.name);
+                        return (
+                          <label key={idx} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={bookingData.selectedExtras.includes(idx)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setBookingData({
+                                    ...bookingData,
+                                    selectedExtras: [...bookingData.selectedExtras, idx]
+                                  });
+                                } else {
+                                  setBookingData({
+                                    ...bookingData,
+                                    selectedExtras: bookingData.selectedExtras.filter(i => i !== idx)
+                                  });
+                                }
+                              }}
+                              className="rounded"
+                            />
+                            <span className="text-sm">
+                              {extraName} - ${extra.price}
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
                 <div className="border-t pt-4">
                   <div className="flex justify-between items-center mb-4">
-                    <span className="text-lg font-semibold">Total Amount:</span>
+                    <span className="text-lg font-semibold">{t('services.totalAmount')}:</span>
                     <span className="text-2xl font-bold text-primary-600">${totalAmount.toFixed(2)}</span>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Special Instructions (Optional)</label>
+                  <label className="block text-sm font-medium mb-1">{t('services.specialInstructions')}</label>
                   <textarea
                     value={bookingData.notes}
                     onChange={(e) => setBookingData({ ...bookingData, notes: e.target.value })}
@@ -369,14 +372,14 @@ export default function PublicServiceDetails() {
                 <div className="flex gap-2">
                   <Button type="submit" className="flex-1">
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Confirm Booking
+                    {t('services.confirmBooking')}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => setShowBookingForm(false)}
                   >
-                    Cancel
+                    {t('services.cancel')}
                   </Button>
                 </div>
               </form>
@@ -384,7 +387,7 @@ export default function PublicServiceDetails() {
           )}
         </Card>
       </div>
-    </div>
+    </Layout>
   );
 }
 
