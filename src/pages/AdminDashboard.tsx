@@ -159,14 +159,33 @@ export default function AdminDashboard() {
   // Form data
   const [companyForm, setCompanyForm] = useState({ name: '', email: '', phone: '' });
   const [serviceForm, setServiceForm] = useState({
-    name: '', category: '', price: 0, duration: 1, description: '',
-    image: '', perHourFee: 0, perPersonFee: 0, hasExtraRequirements: false,
-    extraRequirements: [] as Array<{ name: string; price: number }>
+    name: { en: '', ar: '' },
+    category: { en: '', ar: '' },
+    price: 0,
+    duration: 1,
+    description: { en: '', ar: '' },
+    imageFile: null as File | null,
+    imagePreview: '' as string | null,
+    perHourFee: 0,
+    perPersonFee: 0,
+    hasExtraRequirements: false,
+    extraRequirements: [] as Array<{ name: { en: string; ar: string }; price: number }>
   });
+  const [editingService, setEditingService] = useState<any>(null);
+  const [newExtraRequirement, setNewExtraRequirement] = useState({ name: { en: '', ar: '' }, price: 0 });
 
   useEffect(() => {
     loadData();
   }, [activeTab]);
+
+  // Cleanup image preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (serviceForm.imagePreview && serviceForm.imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(serviceForm.imagePreview);
+      }
+    };
+  }, [serviceForm.imagePreview]);
 
   const loadData = async () => {
     if (activeTab === 'overview' || activeTab === 'orders') {
@@ -180,6 +199,9 @@ export default function AdminDashboard() {
     if (activeTab === 'employees') {
       await loadEmployees();
       await loadApprovals();
+    }
+    if (activeTab === 'services') {
+      await loadServices();
     }
     if (activeTab === 'verification') {
       await loadApprovals();
@@ -368,18 +390,261 @@ export default function AdminDashboard() {
 
   const handleCreateService = async () => {
     try {
-      await api.post('/services', serviceForm);
-      toast.success('Service created successfully');
-      setShowServiceForm(false);
-      setServiceForm({
-        name: '', category: '', price: 0, duration: 1, description: '',
-        image: '', perHourFee: 0, perPersonFee: 0, hasExtraRequirements: false,
-        extraRequirements: []
+      console.log('🔄 Creating service...');
+      console.log('Service form data:', {
+        name: serviceForm.name,
+        category: serviceForm.category,
+        price: serviceForm.price,
+        duration: serviceForm.duration,
+        hasImage: !!serviceForm.imageFile,
+        imageFileName: serviceForm.imageFile?.name,
+        imageFileSize: serviceForm.imageFile?.size
       });
+
+      // Validate required fields
+      if (!serviceForm.name.en || !serviceForm.category.en || serviceForm.price <= 0 || serviceForm.duration <= 0) {
+        const missing = [];
+        if (!serviceForm.name.en) missing.push('Name (English)');
+        if (!serviceForm.category.en) missing.push('Category (English)');
+        if (serviceForm.price <= 0) missing.push('Price');
+        if (serviceForm.duration <= 0) missing.push('Duration');
+        toast.error(`Please fill in: ${missing.join(', ')}`);
+        return;
+      }
+
+      if (!serviceForm.imageFile) {
+        toast.error('Please select an image for the service');
+        return;
+      }
+
+      const formData = new FormData();
+      
+      // Add multilingual fields
+      formData.append('name', JSON.stringify(serviceForm.name));
+      formData.append('category', JSON.stringify(serviceForm.category));
+      formData.append('description', JSON.stringify(serviceForm.description));
+      formData.append('price', serviceForm.price.toString());
+      formData.append('duration', serviceForm.duration.toString());
+      formData.append('perHourFee', serviceForm.perHourFee.toString());
+      formData.append('perPersonFee', serviceForm.perPersonFee.toString());
+      formData.append('hasExtraRequirements', serviceForm.hasExtraRequirements.toString());
+      
+      // Add image file (required)
+      formData.append('image', serviceForm.imageFile);
+      
+      // Add extra requirements
+      if (serviceForm.hasExtraRequirements && serviceForm.extraRequirements.length > 0) {
+        formData.append('extraRequirements', JSON.stringify(serviceForm.extraRequirements));
+      }
+
+      console.log('📤 Sending request to /api/services');
+      console.log('FormData entries:', Array.from(formData.entries()).map(([key, value]) => ({
+        key,
+        value: value instanceof File ? `File: ${value.name} (${value.size} bytes)` : value
+      })));
+
+      const response = await api.post('/services', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('✅ Service created successfully:', response.data);
+      toast.success('Service created successfully');
+      resetServiceForm();
       loadServices();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to create service');
+      console.error('❌ Error creating service:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      console.error('Error message:', error.message);
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create service';
+      toast.error(`Error: ${errorMessage}`);
+      
+      // Show more details in console for debugging
+      if (error.response?.data?.error) {
+        console.error('Server error details:', error.response.data.error);
+      }
     }
+  };
+
+  const handleUpdateService = async () => {
+    if (!editingService) return;
+    
+    try {
+      console.log('🔄 Updating service:', editingService._id);
+      console.log('Service form data:', {
+        name: serviceForm.name,
+        category: serviceForm.category,
+        price: serviceForm.price,
+        duration: serviceForm.duration,
+        hasNewImage: !!serviceForm.imageFile,
+        imageFileName: serviceForm.imageFile?.name
+      });
+
+      // Validate required fields
+      if (!serviceForm.name.en || !serviceForm.category.en || serviceForm.price <= 0 || serviceForm.duration <= 0) {
+        const missing = [];
+        if (!serviceForm.name.en) missing.push('Name (English)');
+        if (!serviceForm.category.en) missing.push('Category (English)');
+        if (serviceForm.price <= 0) missing.push('Price');
+        if (serviceForm.duration <= 0) missing.push('Duration');
+        toast.error(`Please fill in: ${missing.join(', ')}`);
+        return;
+      }
+
+      const formData = new FormData();
+      
+      // Add multilingual fields
+      formData.append('name', JSON.stringify(serviceForm.name));
+      formData.append('category', JSON.stringify(serviceForm.category));
+      formData.append('description', JSON.stringify(serviceForm.description));
+      formData.append('price', serviceForm.price.toString());
+      formData.append('duration', serviceForm.duration.toString());
+      formData.append('perHourFee', serviceForm.perHourFee.toString());
+      formData.append('perPersonFee', serviceForm.perPersonFee.toString());
+      formData.append('hasExtraRequirements', serviceForm.hasExtraRequirements.toString());
+      
+      // Add image file (if new file selected, otherwise keep existing)
+      if (serviceForm.imageFile) {
+        formData.append('image', serviceForm.imageFile);
+        console.log('📷 New image file added:', serviceForm.imageFile.name);
+      } else {
+        console.log('📷 Keeping existing image');
+      }
+      
+      // Add extra requirements
+      if (serviceForm.hasExtraRequirements && serviceForm.extraRequirements.length > 0) {
+        formData.append('extraRequirements', JSON.stringify(serviceForm.extraRequirements));
+      }
+
+      console.log('📤 Sending update request to /api/services/' + editingService._id);
+      const response = await api.put(`/services/${editingService._id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('✅ Service updated successfully:', response.data);
+      toast.success('Service updated successfully');
+      resetServiceForm();
+      setEditingService(null);
+      loadServices();
+    } catch (error: any) {
+      console.error('❌ Error updating service:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      console.error('Error message:', error.message);
+      
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update service';
+      toast.error(`Error: ${errorMessage}`);
+      
+      if (error.response?.data?.error) {
+        console.error('Server error details:', error.response.data.error);
+      }
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    if (!confirm('Are you sure you want to delete this service?')) return;
+    
+    try {
+      await api.delete(`/services/${serviceId}`);
+      toast.success('Service deleted successfully');
+      loadServices();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete service');
+    }
+  };
+
+  const resetServiceForm = () => {
+    setShowServiceForm(false);
+    setEditingService(null);
+    setServiceForm({
+      name: { en: '', ar: '' },
+      category: { en: '', ar: '' },
+      price: 0,
+      duration: 1,
+      description: { en: '', ar: '' },
+      imageFile: null,
+      imagePreview: null,
+      perHourFee: 0,
+      perPersonFee: 0,
+      hasExtraRequirements: false,
+      extraRequirements: []
+    });
+    setNewExtraRequirement({ name: { en: '', ar: '' }, price: 0 });
+  };
+
+  const startEditService = (service: any) => {
+    setEditingService(service);
+    setShowServiceForm(true);
+    
+    // Parse multilingual fields
+    const name = typeof service.name === 'object' ? service.name : { en: service.name, ar: '' };
+    const category = typeof service.category === 'object' ? service.category : { en: service.category, ar: '' };
+    const description = typeof service.description === 'object' ? service.description : { en: service.description || '', ar: '' };
+    
+    setServiceForm({
+      name,
+      category,
+      price: service.price,
+      duration: service.duration,
+      description,
+      imageFile: null,
+      imagePreview: service.image || null,
+      perHourFee: service.perHourFee || 0,
+      perPersonFee: service.perPersonFee || 0,
+      hasExtraRequirements: service.hasExtraRequirements || false,
+      extraRequirements: (service.extraRequirements || []).map((extra: any) => ({
+        name: typeof extra.name === 'object' ? extra.name : { en: extra.name, ar: '' },
+        price: extra.price
+      }))
+    });
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size should be less than 5MB');
+        return;
+      }
+      
+      setServiceForm({
+        ...serviceForm,
+        imageFile: file,
+        imagePreview: URL.createObjectURL(file)
+      });
+    }
+  };
+
+  const addExtraRequirement = () => {
+    if (!newExtraRequirement.name.en || newExtraRequirement.price <= 0) {
+      toast.error('Please fill in extra requirement name (English) and price');
+      return;
+    }
+    
+    setServiceForm({
+      ...serviceForm,
+      extraRequirements: [...serviceForm.extraRequirements, { ...newExtraRequirement }]
+    });
+    setNewExtraRequirement({ name: { en: '', ar: '' }, price: 0 });
+  };
+
+  const removeExtraRequirement = (index: number) => {
+    setServiceForm({
+      ...serviceForm,
+      extraRequirements: serviceForm.extraRequirements.filter((_, i) => i !== index)
+    });
   };
 
   const handleUpdateCommission = async () => {
@@ -1195,73 +1460,231 @@ export default function AdminDashboard() {
 
           {showServiceForm && (
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Add New Service</h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Input
-                  placeholder="Service Name"
-                  value={serviceForm.name}
-                  onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
-                />
-                <Input
-                  placeholder="Category"
-                  value={serviceForm.category}
-                  onChange={(e) => setServiceForm({ ...serviceForm, category: e.target.value })}
-                />
-                <Input
-                  type="number"
-                  placeholder="Base Price"
-                  value={serviceForm.price}
-                  onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) || 0 })}
-                />
-                <Input
-                  type="number"
-                  placeholder="Duration (hours)"
-                  value={serviceForm.duration}
-                  onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) || 1 })}
-                />
-                <Input
-                  placeholder="Image URL"
-                  value={serviceForm.image}
-                  onChange={(e) => setServiceForm({ ...serviceForm, image: e.target.value })}
-                />
-                <Input
-                  type="number"
-                  placeholder="Per Hour Fee"
-                  value={serviceForm.perHourFee}
-                  onChange={(e) => setServiceForm({ ...serviceForm, perHourFee: parseFloat(e.target.value) || 0 })}
-                />
-                <Input
-                  type="number"
-                  placeholder="Per Person Fee"
-                  value={serviceForm.perPersonFee}
-                  onChange={(e) => setServiceForm({ ...serviceForm, perPersonFee: parseFloat(e.target.value) || 0 })}
-                />
-                <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold mb-4">
+                {editingService ? 'Edit Service' : 'Add New Service'}
+              </h3>
+              
+              {/* Multilingual Name */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Service Name *</label>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Input
+                      placeholder="Name (English) *"
+                      value={serviceForm.name.en}
+                      onChange={(e) => setServiceForm({ ...serviceForm, name: { ...serviceForm.name, en: e.target.value } })}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      placeholder="Name (Arabic)"
+                      value={serviceForm.name.ar}
+                      onChange={(e) => setServiceForm({ ...serviceForm, name: { ...serviceForm.name, ar: e.target.value } })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Multilingual Category */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Category *</label>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Input
+                      placeholder="Category (English) *"
+                      value={serviceForm.category.en}
+                      onChange={(e) => setServiceForm({ ...serviceForm, category: { ...serviceForm.category, en: e.target.value } })}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      placeholder="Category (Arabic)"
+                      value={serviceForm.category.ar}
+                      onChange={(e) => setServiceForm({ ...serviceForm, category: { ...serviceForm.category, ar: e.target.value } })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Price and Duration */}
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Base Price *</label>
+                  <Input
+                    type="number"
+                    placeholder="Base Price"
+                    value={serviceForm.price}
+                    onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) || 0 })}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Duration (hours) *</label>
+                  <Input
+                    type="number"
+                    placeholder="Duration"
+                    value={serviceForm.duration}
+                    onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) || 1 })}
+                    min="1"
+                  />
+                </div>
+              </div>
+
+              {/* Per Hour and Per Person Fees */}
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Per Hour Fee</label>
+                  <Input
+                    type="number"
+                    placeholder="Per Hour Fee"
+                    value={serviceForm.perHourFee}
+                    onChange={(e) => setServiceForm({ ...serviceForm, perHourFee: parseFloat(e.target.value) || 0 })}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Per Person Fee</label>
+                  <Input
+                    type="number"
+                    placeholder="Per Person Fee"
+                    value={serviceForm.perPersonFee}
+                    onChange={(e) => setServiceForm({ ...serviceForm, perPersonFee: parseFloat(e.target.value) || 0 })}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Image Upload */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Service Image *</label>
+                <div className="space-y-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                  />
+                  {serviceForm.imageFile && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600 mb-2">Selected: {serviceForm.imageFile.name}</p>
+                      {serviceForm.imagePreview && (
+                        <img 
+                          src={serviceForm.imagePreview} 
+                          alt="Preview" 
+                          className="h-48 w-full object-cover rounded border border-gray-300" 
+                        />
+                      )}
+                    </div>
+                  )}
+                  {!serviceForm.imageFile && serviceForm.imagePreview && editingService && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600 mb-2">Current image (select new image to replace)</p>
+                      <img 
+                        src={serviceForm.imagePreview} 
+                        alt="Current" 
+                        className="h-48 w-full object-cover rounded border border-gray-300" 
+                      />
+                    </div>
+                  )}
+                  {!serviceForm.imageFile && !serviceForm.imagePreview && (
+                    <p className="text-sm text-gray-500 italic">No image selected. Please select an image file.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Multilingual Description */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <textarea
+                    className="border rounded p-2"
+                    placeholder="Description (English)"
+                    value={serviceForm.description.en}
+                    onChange={(e) => setServiceForm({ ...serviceForm, description: { ...serviceForm.description, en: e.target.value } })}
+                    rows={3}
+                  />
+                  <textarea
+                    className="border rounded p-2"
+                    placeholder="Description (Arabic)"
+                    value={serviceForm.description.ar}
+                    onChange={(e) => setServiceForm({ ...serviceForm, description: { ...serviceForm.description, ar: e.target.value } })}
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Extra Requirements */}
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-3">
                   <input
                     type="checkbox"
+                    id="hasExtraRequirements"
                     checked={serviceForm.hasExtraRequirements}
                     onChange={(e) => setServiceForm({ ...serviceForm, hasExtraRequirements: e.target.checked })}
                   />
-                  <label>Has Extra Requirements</label>
+                  <label htmlFor="hasExtraRequirements" className="text-sm font-medium">Has Extra Requirements</label>
                 </div>
-                <textarea
-                  className="col-span-2 border rounded p-2"
-                  placeholder="Description"
-                  value={serviceForm.description}
-                  onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
-                  rows={3}
-                />
+
+                {serviceForm.hasExtraRequirements && (
+                  <div className="border rounded p-4 space-y-4">
+                    <h4 className="font-medium">Extra Requirements</h4>
+                    
+                    {/* Add New Extra Requirement */}
+                    <div className="grid md:grid-cols-4 gap-2">
+                      <Input
+                        placeholder="Name (English) *"
+                        value={newExtraRequirement.name.en}
+                        onChange={(e) => setNewExtraRequirement({ ...newExtraRequirement, name: { ...newExtraRequirement.name, en: e.target.value } })}
+                      />
+                      <Input
+                        placeholder="Name (Arabic)"
+                        value={newExtraRequirement.name.ar}
+                        onChange={(e) => setNewExtraRequirement({ ...newExtraRequirement, name: { ...newExtraRequirement.name, ar: e.target.value } })}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Price *"
+                        value={newExtraRequirement.price}
+                        onChange={(e) => setNewExtraRequirement({ ...newExtraRequirement, price: parseFloat(e.target.value) || 0 })}
+                        min="0"
+                        step="0.01"
+                      />
+                      <Button size="sm" onClick={addExtraRequirement}>Add</Button>
+                    </div>
+
+                    {/* List of Extra Requirements */}
+                    {serviceForm.extraRequirements.length > 0 && (
+                      <div className="space-y-2">
+                        {serviceForm.extraRequirements.map((extra, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                            <div className="flex-1">
+                              <span className="font-medium">{extra.name.en}</span>
+                              {extra.name.ar && <span className="text-gray-500 ml-2">({extra.name.ar})</span>}
+                              <span className="ml-2 text-primary-600">${extra.price.toFixed(2)}</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => removeExtraRequirement(index)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div className="flex gap-2 mt-4">
-                <Button onClick={handleCreateService}>Create</Button>
-                <Button variant="outline" onClick={() => {
-                  setShowServiceForm(false);
-                  setServiceForm({
-                    name: '', category: '', price: 0, duration: 1, description: '',
-                    image: '', perHourFee: 0, perPersonFee: 0, hasExtraRequirements: false,
-                    extraRequirements: []
-                  });
-                }}>
+                <Button onClick={editingService ? handleUpdateService : handleCreateService}>
+                  {editingService ? 'Update' : 'Create'}
+                </Button>
+                <Button variant="outline" onClick={resetServiceForm}>
                   Cancel
                 </Button>
               </div>
@@ -1269,24 +1692,61 @@ export default function AdminDashboard() {
           )}
 
           <div className="grid md:grid-cols-3 gap-4">
-            {services.map((service) => (
-              <Card key={service._id} className="p-4">
-                {service.image && (
-                  <img src={service.image} alt={service.name} className="w-full h-48 object-cover rounded mb-4" />
-                )}
-                <h3 className="font-semibold text-lg mb-2">{service.name}</h3>
-                <p className="text-sm text-gray-600 mb-2">{service.category}</p>
-                <p className="text-sm mb-2">{service.description}</p>
-                <div className="text-sm space-y-1">
-                  <p>Base Price: ${service.price}</p>
-                  {service.perHourFee > 0 && <p>Per Hour: ${service.perHourFee}</p>}
-                  {service.perPersonFee > 0 && <p>Per Person: ${service.perPersonFee}</p>}
-                  {service.hasExtraRequirements && (
-                    <p className="text-primary-600">Has Extra Requirements</p>
+            {services.map((service) => {
+              // Handle multilingual fields
+              const serviceName = typeof service.name === 'object' ? service.name.en : service.name;
+              const serviceCategory = typeof service.category === 'object' ? service.category.en : service.category;
+              const serviceDescription = typeof service.description === 'object' ? service.description.en : service.description;
+              
+              return (
+                <Card key={service._id} className="p-4 relative">
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => startEditService(service)}
+                    >
+                      <FileEdit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => handleDeleteService(service._id)}
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  {service.image && (
+                    <img src={service.image} alt={serviceName} className="w-full h-48 object-cover rounded mb-4" />
                   )}
-                </div>
-              </Card>
-            ))}
+                  <h3 className="font-semibold text-lg mb-2 pr-16">{serviceName}</h3>
+                  <p className="text-sm text-gray-600 mb-2">{serviceCategory}</p>
+                  {serviceDescription && (
+                    <p className="text-sm mb-2 line-clamp-2">{serviceDescription}</p>
+                  )}
+                  <div className="text-sm space-y-1">
+                    <p>Base Price: ${service.price.toFixed(2)}</p>
+                    {service.perHourFee > 0 && <p>Per Hour: ${service.perHourFee.toFixed(2)}</p>}
+                    {service.perPersonFee > 0 && <p>Per Person: ${service.perPersonFee.toFixed(2)}</p>}
+                    {service.duration > 0 && <p>Duration: {service.duration} hour(s)</p>}
+                    {service.hasExtraRequirements && service.extraRequirements && service.extraRequirements.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-primary-600 font-medium">Extra Requirements:</p>
+                        <ul className="list-disc list-inside text-xs space-y-1 mt-1">
+                          {service.extraRequirements.map((extra: any, idx: number) => {
+                            const extraName = typeof extra.name === 'object' ? extra.name.en : extra.name;
+                            return (
+                              <li key={idx}>{extraName} - ${extra.price.toFixed(2)}</li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}

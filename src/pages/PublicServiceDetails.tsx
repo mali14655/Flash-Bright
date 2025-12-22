@@ -170,7 +170,17 @@ export default function PublicServiceDetails() {
 
         <Card className="p-6 mb-6">
           {service.image && (
-            <img src={service.image} alt={translate(service.name)} className="w-full h-64 object-cover rounded-lg mb-6" />
+            <div className="relative w-full h-64 md:h-96 overflow-hidden rounded-lg mb-6 bg-gradient-to-br from-primary-100 to-primary-50">
+              <img 
+                src={service.image} 
+                alt={translate(service.name)} 
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                }}
+              />
+            </div>
           )}
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{translate(service.name)}</h1>
