@@ -77,3 +77,4 @@ export function translateServices(services: any[], language: 'en' | 'ar' = 'en')
   return services.map(service => translateService(service, language));
 }
 
+

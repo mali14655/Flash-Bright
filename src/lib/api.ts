@@ -1,6 +1,28 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Get API URL from environment variable
+// In development: if VITE_API_URL is not set, use '/api' which will be proxied by Vite
+// In production: VITE_API_URL should be set to the full backend URL (e.g., https://api.yourdomain.com/api)
+const getApiUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  
+  // If VITE_API_URL is explicitly set, use it
+  if (envUrl) {
+    return envUrl;
+  }
+  
+  // In development, use relative path to leverage Vite proxy
+  // In production build, this will need VITE_API_URL to be set
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  
+  // Fallback for production if VITE_API_URL is not set
+  console.warn('VITE_API_URL is not set. Using default localhost URL. This may not work in production.');
+  return 'http://localhost:5000/api';
+};
+
+const API_URL = getApiUrl();
 
 const api = axios.create({
   baseURL: API_URL,
