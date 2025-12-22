@@ -22,6 +22,7 @@ interface Booking {
   hours?: number;
   numberOfPeople?: number;
   selectedExtras?: Array<{ name: string; price: number }>;
+  availableForCompanies?: Array<{ _id: string; name: string }>;
 }
 
 interface Notification {
@@ -241,16 +242,25 @@ export default function PartnerDashboard() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      assigned_to_partner: 'bg-blue-100 text-blue-800',
+      pending: 'bg-yellow-100 text-yellow-800',
+      available_for_companies: 'bg-orange-100 text-orange-800',
+      assigned_by_admin: 'bg-blue-100 text-blue-800',
+      assigned_to_partner: 'bg-green-100 text-green-800',
       assigned_to_employee: 'bg-purple-100 text-purple-800',
       in_progress: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
+      cancelled: 'bg-red-100 text-red-800',
+      declined: 'bg-gray-100 text-gray-800',
+      expired: 'bg-red-100 text-red-800',
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
   const assignedBookings = bookings.filter(
-    (b) => b.status === 'assigned_to_partner' || b.status === 'assigned_to_employee'
+    (b) => (b.status === 'assigned_to_partner' && (b.assignedToEmployee || (b.assignedEmployees && b.assignedEmployees.length > 0))) || 
+           b.status === 'assigned_to_employee' || 
+           b.status === 'in_progress' ||
+           b.status === 'completed'
   );
 
   return (
@@ -552,10 +562,11 @@ export default function PartnerDashboard() {
         </Card>
       )}
 
-      {/* New Orders */}
-      {bookings.filter(b => b.status === 'assigned_to_partner' && !b.assignedToEmployee).length > 0 && (
-        <Card className="p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">New Orders</h2>
+      {/* Available Orders (for acceptance) */}
+      {bookings.filter(b => b.status === 'available_for_companies').length > 0 && (
+        <Card className="p-6 mb-6 border-2 border-orange-300">
+          <h2 className="text-xl font-semibold mb-2 text-orange-600">Available Orders</h2>
+          <p className="text-sm text-gray-600 mb-4">These orders are available for acceptance. Accept quickly before other companies take them!</p>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -564,18 +575,22 @@ export default function PartnerDashboard() {
                   <th className="text-left p-2">Service</th>
                   <th className="text-left p-2">Amount</th>
                   <th className="text-left p-2">Date</th>
+                  <th className="text-left p-2">Address</th>
                   <th className="text-left p-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {bookings
-                  .filter(b => b.status === 'assigned_to_partner' && !b.assignedToEmployee)
+                  .filter(b => b.status === 'available_for_companies')
                   .map((booking) => (
-                    <tr key={booking._id} className="border-b hover:bg-gray-50">
+                    <tr key={booking._id} className="border-b hover:bg-orange-50">
                       <td className="p-2">
                         <div>
                           <p className="font-medium">{booking.customerId?.name}</p>
                           <p className="text-xs text-gray-500">{booking.customerId?.email}</p>
+                          {booking.customerId?.phone && (
+                            <p className="text-xs text-gray-500">{booking.customerId.phone}</p>
+                          )}
                         </div>
                       </td>
                       <td className="p-2">
@@ -587,12 +602,20 @@ export default function PartnerDashboard() {
                       <td className="p-2">${booking.totalAmount?.toFixed(2) || booking.serviceId?.price.toFixed(2)}</td>
                       <td className="p-2">
                         {new Date(booking.scheduledDate).toLocaleDateString()}
+                        <br />
+                        <span className="text-xs text-gray-500">
+                          {new Date(booking.scheduledDate).toLocaleTimeString()}
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <p className="text-sm">{booking.address}</p>
                       </td>
                       <td className="p-2">
                         <div className="flex gap-2">
                           <Button
                             size="sm"
                             onClick={() => handleAcceptOrder(booking._id)}
+                            className="bg-green-600 hover:bg-green-700"
                           >
                             <CheckCircle className="w-4 h-4 mr-1" />
                             Accept
@@ -615,21 +638,203 @@ export default function PartnerDashboard() {
         </Card>
       )}
 
+      {/* Assigned by Admin (needs acceptance/decline) */}
+      {bookings.filter(b => b.status === 'assigned_by_admin').length > 0 && (
+        <Card className="p-6 mb-6 border-2 border-blue-300">
+          <h2 className="text-xl font-semibold mb-2 text-blue-600">Assigned by Admin</h2>
+          <p className="text-sm text-gray-600 mb-4">These orders have been assigned to you by admin. Please accept or decline with a reason.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-2">Customer</th>
+                  <th className="text-left p-2">Service</th>
+                  <th className="text-left p-2">Amount</th>
+                  <th className="text-left p-2">Date</th>
+                  <th className="text-left p-2">Address</th>
+                  <th className="text-left p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings
+                  .filter(b => b.status === 'assigned_by_admin')
+                  .map((booking) => (
+                    <tr key={booking._id} className="border-b hover:bg-blue-50">
+                      <td className="p-2">
+                        <div>
+                          <p className="font-medium">{booking.customerId?.name}</p>
+                          <p className="text-xs text-gray-500">{booking.customerId?.email}</p>
+                          {booking.customerId?.phone && (
+                            <p className="text-xs text-gray-500">{booking.customerId.phone}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2">
+                        <div>
+                          <p className="font-medium">{booking.serviceId?.name}</p>
+                          <p className="text-xs text-gray-500">{booking.serviceId?.category}</p>
+                        </div>
+                      </td>
+                      <td className="p-2">${booking.totalAmount?.toFixed(2) || booking.serviceId?.price.toFixed(2)}</td>
+                      <td className="p-2">
+                        {new Date(booking.scheduledDate).toLocaleDateString()}
+                        <br />
+                        <span className="text-xs text-gray-500">
+                          {new Date(booking.scheduledDate).toLocaleTimeString()}
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <p className="text-sm">{booking.address}</p>
+                      </td>
+                      <td className="p-2">
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleAcceptOrder(booking._id)}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => setShowDeclineModal(booking._id)}
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Decline
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* My Accepted Orders (no decline option, only assign employees) */}
+      {bookings.filter(b => b.status === 'assigned_to_partner' && !b.assignedToEmployee && (!b.assignedEmployees || b.assignedEmployees.length === 0)).length > 0 && (
+        <Card className="p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">My Accepted Orders</h2>
+          <p className="text-sm text-gray-600 mb-4">Assign employees to these orders to proceed. Once accepted, orders cannot be declined.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-2">Customer</th>
+                  <th className="text-left p-2">Service</th>
+                  <th className="text-left p-2">Amount</th>
+                  <th className="text-left p-2">Date</th>
+                  <th className="text-left p-2">Address</th>
+                  <th className="text-left p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings
+                  .filter(b => b.status === 'assigned_to_partner' && !b.assignedToEmployee && (!b.assignedEmployees || b.assignedEmployees.length === 0))
+                  .map((booking) => (
+                    <tr key={booking._id} className="border-b hover:bg-gray-50">
+                      <td className="p-2">
+                        <div>
+                          <p className="font-medium">{booking.customerId?.name}</p>
+                          <p className="text-xs text-gray-500">{booking.customerId?.email}</p>
+                          {booking.customerId?.phone && (
+                            <p className="text-xs text-gray-500">{booking.customerId.phone}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2">
+                        <div>
+                          <p className="font-medium">{booking.serviceId?.name}</p>
+                          <p className="text-xs text-gray-500">{booking.serviceId?.category}</p>
+                        </div>
+                      </td>
+                      <td className="p-2">${booking.totalAmount?.toFixed(2) || booking.serviceId?.price.toFixed(2)}</td>
+                      <td className="p-2">
+                        {new Date(booking.scheduledDate).toLocaleDateString()}
+                        <br />
+                        <span className="text-xs text-gray-500">
+                          {new Date(booking.scheduledDate).toLocaleTimeString()}
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <p className="text-sm">{booking.address}</p>
+                      </td>
+                      <td className="p-2">
+                        {selectedBooking === booking._id ? (
+                          <div className="space-y-2">
+                            <div className="text-sm font-medium mb-2">Select Employees:</div>
+                            <div className="space-y-1 max-h-32 overflow-y-auto border rounded p-2">
+                              {employees.map((emp) => (
+                                <label
+                                  key={emp._id}
+                                  className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedEmployees.includes(emp._id)}
+                                    onChange={() => toggleEmployeeSelection(emp._id)}
+                                    className="rounded"
+                                  />
+                                  <span className="text-sm">{emp.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleAssignEmployees(booking._id)}
+                                disabled={selectedEmployees.length === 0}
+                              >
+                                Assign
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedBooking('');
+                                  setSelectedEmployees([]);
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => setSelectedBooking(booking._id)}
+                          >
+                            Assign Employees
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {/* Decline Modal */}
       {showDeclineModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <Card className="p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Decline Order</h3>
-            <p className="text-sm text-gray-600 mb-4">Please provide a reason for declining this order:</p>
+            <p className="text-sm text-gray-600 mb-4">Please provide a reason for declining this order. This is required.</p>
             <textarea
               className="w-full border rounded p-2 mb-4"
               rows={4}
               value={declineReason}
               onChange={(e) => setDeclineReason(e.target.value)}
-              placeholder="Enter reason for declining..."
+              placeholder="Enter reason for declining (required)..."
+              required
             />
             <div className="flex gap-2">
-              <Button onClick={handleDeclineOrder}>Submit</Button>
+              <Button onClick={handleDeclineOrder} disabled={!declineReason.trim()}>Submit</Button>
               <Button variant="outline" onClick={() => {
                 setShowDeclineModal('');
                 setDeclineReason('');
