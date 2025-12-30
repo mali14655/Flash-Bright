@@ -60,7 +60,7 @@ export default function AdminCompanyDetails() {
     return (
       <DashboardLayout title="Admin">
         <div className="flex items-center justify-center min-h-[300px]">
-          <p className="text-gray-600">Loading company details...</p>
+          <p className="text-gray-600">Loading company details....</p>
         </div>
       </DashboardLayout>
     );
