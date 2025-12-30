@@ -8,16 +8,6 @@ import api from '../lib/api';
 import { useLanguage } from '../context/LanguageContext';
 import { translateServices, useTranslator } from '../lib/translator';
 
-interface Service {
-  _id: string;
-  name: string;
-  category: string;
-  price: number;
-  duration: number;
-  description: string;
-  image?: string;
-}
-
 // Background images for carousel - using Unsplash cleaning service images
 const backgroundImages = [
   'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1920&q=80', // Professional cleaning
@@ -42,7 +32,7 @@ interface SubCategory {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const { translate } = useTranslator();
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategoriesByCategory, setSubCategoriesByCategory] = useState<Record<string, SubCategory[]>>({});

@@ -6,18 +6,10 @@ import Input from '../components/ui/Input';
 import Layout from '../components/Layout';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
-import { Clock, DollarSign, CheckCircle, Users } from 'lucide-react';
+import { Clock, DollarSign, CheckCircle } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useBreadcrumb } from '../context/BreadcrumbContext';
 import { translateService, useTranslator } from '../lib/translator';
-
-interface Material {
-  _id: string;
-  name: string | { en: string; ar?: string };
-  fee: number;
-  description?: string | { en: string; ar?: string };
-  instructions?: string | { en: string; ar?: string };
-}
 
 interface Service {
   _id: string;
@@ -31,8 +23,8 @@ interface Service {
   hourly_rate_per_pro?: number;
   base_fee?: number;
   base_duration_mins?: number;
-  // Material fields - array of material references
-  materials?: Material[] | string[];
+  // Materials array
+  materials: Array<{ name: string; price: number }>;
   material_fee?: number;
   material_instructions?: string | { en: string; ar?: string };
   // Legacy fields
@@ -42,7 +34,6 @@ interface Service {
   image: string;
   perHourFee: number;
   perPersonFee: number;
-  materials: Array<{ name: string; price: number }>;
 }
 
 export default function PublicServiceDetails() {
@@ -392,7 +383,7 @@ export default function PublicServiceDetails() {
                               name="professionals"
                               value={num}
                               checked={bookingData.selected_professionals === num}
-                              onChange={(e) => setBookingData({ 
+                              onChange={() => setBookingData({ 
                                 ...bookingData, 
                                 selected_professionals: num,
                                 numberOfPeople: num // Legacy support
@@ -494,13 +485,9 @@ export default function PublicServiceDetails() {
                     <div className="mt-4">
                       <p className="text-xs font-semibold text-gray-700 mb-2">Required Materials List:</p>
                       <div className="space-y-2">
-                        {service.materials.map((material: any, idx: number) => {
-                          const materialName = typeof material === 'object' && material !== null
-                            ? (typeof material.name === 'object' ? translate(material.name) : material.name)
-                            : String(material);
-                          const materialPrice = typeof material === 'object' && material !== null
-                            ? (material.price || material.fee || 0)
-                            : 0;
+                        {service.materials.map((material: { name: string; price: number }, idx: number) => {
+                          const materialName = material.name;
+                          const materialPrice = material.price || 0;
                           
                           return (
                             <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border">

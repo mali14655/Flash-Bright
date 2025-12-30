@@ -34,7 +34,7 @@ interface SubCategory {
 export default function SubCategoryServices() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t, language } = useLanguage();
+  const { language } = useLanguage();
   const { translate } = useTranslator();
   const [services, setServices] = useState<Service[]>([]);
   const [subCategory, setSubCategory] = useState<SubCategory | null>(null);
