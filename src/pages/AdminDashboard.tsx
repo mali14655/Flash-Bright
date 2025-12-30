@@ -8,7 +8,8 @@ import api from '../lib/api';
 import toast from 'react-hot-toast';
 import { 
   Users, Calendar, DollarSign, TrendingUp, Building2, Settings, 
-  BarChart3, Package, CheckCircle, XCircle, ToggleLeft, ToggleRight, AlertCircle, ShieldCheck, FileEdit
+  BarChart3, Package, CheckCircle, XCircle, ToggleLeft, ToggleRight, AlertCircle, ShieldCheck, FileEdit,
+  FolderTree
 } from 'lucide-react';
 
 interface Booking {
@@ -93,14 +94,18 @@ interface Service {
   _id: string;
   name: string;
   category: string;
+  pricing_model?: 'fixed' | 'configurable';
+  fixed_price?: number;
+  fixed_duration_mins?: number;
+  hourly_rate_per_pro?: number;
+  base_duration_mins?: number;
   price: number;
   duration: number;
   description: string;
   image: string;
   perHourFee: number;
   perPersonFee: number;
-  hasExtraRequirements: boolean;
-  extraRequirements: Array<{ name: string; price: number }>;
+  materials: Array<{ name: string; price: number }>;
   isActive: boolean;
 }
 
@@ -130,7 +135,7 @@ interface Refund {
   createdAt: string;
 }
 
-type Tab = 'overview' | 'companies' | 'verification' | 'employees' | 'orders' | 'expired' | 'refunds' | 'services' | 'commission' | 'performance';
+type Tab = 'overview' | 'companies' | 'verification' | 'employees' | 'orders' | 'expired' | 'refunds' | 'services' | 'categories' | 'commission' | 'performance';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -141,6 +146,8 @@ export default function AdminDashboard() {
   const [approvals, setApprovals] = useState<EmployeeApproval[]>([]);
   const [companyApprovals, setCompanyApprovals] = useState<CompanyApproval[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [subCategories, setSubCategories] = useState<any[]>([]);
   const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
   const [expiredBookings, setExpiredBookings] = useState<ExpiredBooking[]>([]);
   const [refunds, setRefunds] = useState<Refund[]>([]);
@@ -152,27 +159,55 @@ export default function AdminDashboard() {
   // Form states
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [showServiceForm, setShowServiceForm] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [showSubCategoryForm, setShowSubCategoryForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [editingSubCategory, setEditingSubCategory] = useState<any>(null);
   const [selectedBooking, setSelectedBooking] = useState<string>('');
   const [selectedPartner, setSelectedPartner] = useState<string>('');
+  const [selectedCategoryForSub, setSelectedCategoryForSub] = useState<string>('');
 
   // Form data
   const [companyForm, setCompanyForm] = useState({ name: '', email: '', phone: '' });
+  const [categoryForm, setCategoryForm] = useState({
+    name: '',
+    description: '',
+    icon: ''
+  });
+  const [subCategoryForm, setSubCategoryForm] = useState({
+    categoryId: '',
+    name: '',
+    description: '',
+    imageFile: null as File | null,
+    imagePreview: '' as string | null
+  });
   const [serviceForm, setServiceForm] = useState({
-    name: { en: '', ar: '' },
-    category: { en: '', ar: '' },
+    name: '',
+    category: '',
+    categoryId: '',
+    subCategoryId: '',
+    main_category: '',
+    sub_category: '',
+    pricing_model: 'fixed' as 'fixed' | 'configurable',
+    // Fixed pricing fields
+    fixed_price: 0,
+    fixed_duration_mins: 30,
+    // Configurable pricing fields
+    hourly_rate_per_pro: 0,
+    base_duration_mins: 60,
+    // Legacy fields (for backward compatibility)
     price: 0,
     duration: 1,
-    description: { en: '', ar: '' },
+    description: '',
     imageFile: null as File | null,
     imagePreview: '' as string | null,
     perHourFee: 0,
     perPersonFee: 0,
-    hasExtraRequirements: false,
-    extraRequirements: [] as Array<{ name: { en: string; ar: string }; price: number }>
+    materials: [] as Array<{ name: string; price: number }>
   });
   const [editingService, setEditingService] = useState<any>(null);
-  const [newExtraRequirement, setNewExtraRequirement] = useState({ name: { en: '', ar: '' }, price: 0 });
+  const [newMaterial, setNewMaterial] = useState({ name: '', price: 0 });
 
   useEffect(() => {
     loadData();
@@ -186,6 +221,13 @@ export default function AdminDashboard() {
       }
     };
   }, [serviceForm.imagePreview]);
+
+  // Load categories when service form opens
+  useEffect(() => {
+    if (showServiceForm) {
+      loadCategories();
+    }
+  }, [showServiceForm]);
 
   const loadData = async () => {
     if (activeTab === 'overview' || activeTab === 'orders') {
@@ -202,12 +244,14 @@ export default function AdminDashboard() {
     }
     if (activeTab === 'services') {
       await loadServices();
+      await loadCategories();
+    }
+    if (activeTab === 'categories') {
+      await loadCategories();
+      await loadSubCategories();
     }
     if (activeTab === 'verification') {
       await loadApprovals();
-    }
-    if (activeTab === 'services') {
-      await loadServices();
     }
     if (activeTab === 'performance') {
       await loadPerformance();
@@ -287,6 +331,36 @@ export default function AdminDashboard() {
       toast.error('Failed to load services');
     }
   };
+
+  const loadCategories = async () => {
+    try {
+      const response = await api.get('/categories');
+      setCategories(response.data);
+    } catch (error) {
+      toast.error('Failed to load categories');
+    }
+  };
+
+  const loadSubCategories = async () => {
+    try {
+      if (selectedCategoryForSub) {
+        const response = await api.get(`/categories/${selectedCategoryForSub}/subcategories`);
+        setSubCategories(response.data);
+      } else {
+        // Load all subcategories
+        const allCategories = await api.get('/categories');
+        const allSubCategories: any[] = [];
+        for (const cat of allCategories.data) {
+          const subs = await api.get(`/categories/${cat._id}/subcategories`);
+          allSubCategories.push(...subs.data);
+        }
+        setSubCategories(allSubCategories);
+      }
+    } catch (error) {
+      toast.error('Failed to load sub-categories');
+    }
+  };
+
 
   const loadPerformance = async () => {
     try {
@@ -394,6 +468,7 @@ export default function AdminDashboard() {
       console.log('Service form data:', {
         name: serviceForm.name,
         category: serviceForm.category,
+        categoryId: serviceForm.categoryId,
         price: serviceForm.price,
         duration: serviceForm.duration,
         hasImage: !!serviceForm.imageFile,
@@ -401,13 +476,22 @@ export default function AdminDashboard() {
         imageFileSize: serviceForm.imageFile?.size
       });
 
-      // Validate required fields
-      if (!serviceForm.name.en || !serviceForm.category.en || serviceForm.price <= 0 || serviceForm.duration <= 0) {
-        const missing = [];
-        if (!serviceForm.name.en) missing.push('Name (English)');
-        if (!serviceForm.category.en) missing.push('Category (English)');
-        if (serviceForm.price <= 0) missing.push('Price');
-        if (serviceForm.duration <= 0) missing.push('Duration');
+      // Validate required fields based on pricing model
+      const missing = [];
+      if (!serviceForm.name || serviceForm.name.trim() === '') missing.push('Name');
+      if (!serviceForm.categoryId) {
+        missing.push('Category');
+      }
+      
+      if (serviceForm.pricing_model === 'fixed') {
+        if (serviceForm.fixed_price <= 0) missing.push('Fixed Price');
+        if (serviceForm.fixed_duration_mins <= 0) missing.push('Fixed Duration');
+      } else {
+        if (serviceForm.hourly_rate_per_pro <= 0) missing.push('Hourly Rate per Professional');
+        if (serviceForm.base_duration_mins <= 0) missing.push('Base Duration');
+      }
+      
+      if (missing.length > 0) {
         toast.error(`Please fill in: ${missing.join(', ')}`);
         return;
       }
@@ -417,24 +501,79 @@ export default function AdminDashboard() {
         return;
       }
 
+      // Ensure category name is set from categoryId if not already set
+      let categoryName = serviceForm.category;
+      if (!categoryName || categoryName.trim() === '') {
+        const selectedCat = categories.find(c => c._id === serviceForm.categoryId);
+        if (selectedCat) {
+          categoryName = typeof selectedCat.name === 'object' ? (selectedCat.name.en || selectedCat.name.ar || '') : selectedCat.name || '';
+        }
+      }
+      if (!categoryName || categoryName.trim() === '') {
+        toast.error('Category name is required');
+        return;
+      }
+
       const formData = new FormData();
       
-      // Add multilingual fields
-      formData.append('name', JSON.stringify(serviceForm.name));
-      formData.append('category', JSON.stringify(serviceForm.category));
-      formData.append('description', JSON.stringify(serviceForm.description));
-      formData.append('price', serviceForm.price.toString());
-      formData.append('duration', serviceForm.duration.toString());
-      formData.append('perHourFee', serviceForm.perHourFee.toString());
+      // Add fields
+      formData.append('name', serviceForm.name);
+      formData.append('category', categoryName);
+      
+      // Add category references (ensure they are strings)
+      if (serviceForm.categoryId) {
+        let categoryIdStr: string;
+        if (typeof serviceForm.categoryId === 'object' && serviceForm.categoryId !== null) {
+          categoryIdStr = (serviceForm.categoryId as any)._id || String(serviceForm.categoryId);
+        } else {
+          categoryIdStr = String(serviceForm.categoryId);
+        }
+        formData.append('categoryId', categoryIdStr);
+      }
+      if (serviceForm.subCategoryId) {
+        let subCategoryIdStr: string;
+        if (typeof serviceForm.subCategoryId === 'object' && serviceForm.subCategoryId !== null) {
+          subCategoryIdStr = (serviceForm.subCategoryId as any)._id || String(serviceForm.subCategoryId);
+        } else {
+          subCategoryIdStr = String(serviceForm.subCategoryId);
+        }
+        formData.append('subCategoryId', subCategoryIdStr);
+      }
+      
+      // Legacy category fields (for backward compatibility)
+      formData.append('main_category', categoryName);
+      if (serviceForm.sub_category) {
+        formData.append('sub_category', serviceForm.sub_category);
+      }
+      
+      formData.append('description', serviceForm.description);
+      formData.append('pricing_model', serviceForm.pricing_model);
+      
+      // Add pricing fields based on model
+      if (serviceForm.pricing_model === 'fixed') {
+        formData.append('fixed_price', serviceForm.fixed_price.toString());
+        formData.append('fixed_duration_mins', serviceForm.fixed_duration_mins.toString());
+        // Legacy support
+        formData.append('price', serviceForm.fixed_price.toString());
+        formData.append('duration', Math.ceil(serviceForm.fixed_duration_mins / 60).toString());
+      } else {
+        formData.append('hourly_rate_per_pro', serviceForm.hourly_rate_per_pro.toString());
+        formData.append('base_duration_mins', serviceForm.base_duration_mins.toString());
+        // Legacy support
+        formData.append('perHourFee', serviceForm.hourly_rate_per_pro.toString());
+        formData.append('price', '0'); // No base fee for configurable
+        formData.append('duration', Math.ceil(serviceForm.base_duration_mins / 60).toString());
+      }
+      
       formData.append('perPersonFee', serviceForm.perPersonFee.toString());
-      formData.append('hasExtraRequirements', serviceForm.hasExtraRequirements.toString());
+      // Materials are always included if they exist
       
       // Add image file (required)
       formData.append('image', serviceForm.imageFile);
       
-      // Add extra requirements
-      if (serviceForm.hasExtraRequirements && serviceForm.extraRequirements.length > 0) {
-        formData.append('extraRequirements', JSON.stringify(serviceForm.extraRequirements));
+      // Add materials
+      if (serviceForm.materials.length > 0) {
+        formData.append('materials', JSON.stringify(serviceForm.materials));
       }
 
       console.log('📤 Sending request to /api/services');
@@ -477,34 +616,99 @@ export default function AdminDashboard() {
       console.log('Service form data:', {
         name: serviceForm.name,
         category: serviceForm.category,
+        categoryId: serviceForm.categoryId,
         price: serviceForm.price,
         duration: serviceForm.duration,
         hasNewImage: !!serviceForm.imageFile,
         imageFileName: serviceForm.imageFile?.name
       });
 
-      // Validate required fields
-      if (!serviceForm.name.en || !serviceForm.category.en || serviceForm.price <= 0 || serviceForm.duration <= 0) {
-        const missing = [];
-        if (!serviceForm.name.en) missing.push('Name (English)');
-        if (!serviceForm.category.en) missing.push('Category (English)');
-        if (serviceForm.price <= 0) missing.push('Price');
-        if (serviceForm.duration <= 0) missing.push('Duration');
+      // Validate required fields based on pricing model
+      const missing = [];
+      if (!serviceForm.name || serviceForm.name.trim() === '') missing.push('Name');
+      if (!serviceForm.categoryId) {
+        missing.push('Category');
+      }
+      
+      if (serviceForm.pricing_model === 'fixed') {
+        if (serviceForm.fixed_price <= 0) missing.push('Fixed Price');
+        if (serviceForm.fixed_duration_mins <= 0) missing.push('Fixed Duration');
+      } else {
+        if (serviceForm.hourly_rate_per_pro <= 0) missing.push('Hourly Rate per Professional');
+        if (serviceForm.base_duration_mins <= 0) missing.push('Base Duration');
+      }
+      
+      if (missing.length > 0) {
         toast.error(`Please fill in: ${missing.join(', ')}`);
+        return;
+      }
+
+      // Ensure category name is set from categoryId if not already set
+      let categoryName = serviceForm.category;
+      if (!categoryName || categoryName.trim() === '') {
+        const selectedCat = categories.find(c => c._id === serviceForm.categoryId);
+        if (selectedCat) {
+          categoryName = typeof selectedCat.name === 'object' ? (selectedCat.name.en || selectedCat.name.ar || '') : selectedCat.name || '';
+        }
+      }
+      if (!categoryName || categoryName.trim() === '') {
+        toast.error('Category name is required');
         return;
       }
 
       const formData = new FormData();
       
-      // Add multilingual fields
-      formData.append('name', JSON.stringify(serviceForm.name));
-      formData.append('category', JSON.stringify(serviceForm.category));
-      formData.append('description', JSON.stringify(serviceForm.description));
-      formData.append('price', serviceForm.price.toString());
-      formData.append('duration', serviceForm.duration.toString());
-      formData.append('perHourFee', serviceForm.perHourFee.toString());
+      // Add fields
+      formData.append('name', serviceForm.name);
+      formData.append('category', categoryName);
+      
+      // Add category references (ensure they are strings)
+      if (serviceForm.categoryId) {
+        let categoryIdStr: string;
+        if (typeof serviceForm.categoryId === 'object' && serviceForm.categoryId !== null) {
+          categoryIdStr = (serviceForm.categoryId as any)._id || String(serviceForm.categoryId);
+        } else {
+          categoryIdStr = String(serviceForm.categoryId);
+        }
+        formData.append('categoryId', categoryIdStr);
+      }
+      if (serviceForm.subCategoryId) {
+        let subCategoryIdStr: string;
+        if (typeof serviceForm.subCategoryId === 'object' && serviceForm.subCategoryId !== null) {
+          subCategoryIdStr = (serviceForm.subCategoryId as any)._id || String(serviceForm.subCategoryId);
+        } else {
+          subCategoryIdStr = String(serviceForm.subCategoryId);
+        }
+        formData.append('subCategoryId', subCategoryIdStr);
+      }
+      
+      // Legacy category fields (for backward compatibility)
+      formData.append('main_category', categoryName);
+      if (serviceForm.sub_category) {
+        formData.append('sub_category', serviceForm.sub_category);
+      }
+      
+      formData.append('description', serviceForm.description);
+      formData.append('pricing_model', serviceForm.pricing_model);
+      
+      // Add pricing fields based on model
+      if (serviceForm.pricing_model === 'fixed') {
+        formData.append('fixed_price', serviceForm.fixed_price.toString());
+        formData.append('fixed_duration_mins', serviceForm.fixed_duration_mins.toString());
+        // Legacy support
+        formData.append('price', serviceForm.fixed_price.toString());
+        formData.append('duration', Math.ceil(serviceForm.fixed_duration_mins / 60).toString());
+      } else {
+        formData.append('hourly_rate_per_pro', serviceForm.hourly_rate_per_pro.toString());
+        formData.append('base_duration_mins', serviceForm.base_duration_mins.toString());
+        // Legacy support
+        formData.append('perHourFee', serviceForm.hourly_rate_per_pro.toString());
+        formData.append('price', '0'); // No base fee for configurable
+        formData.append('duration', Math.ceil(serviceForm.base_duration_mins / 60).toString());
+      }
+      
       formData.append('perPersonFee', serviceForm.perPersonFee.toString());
-      formData.append('hasExtraRequirements', serviceForm.hasExtraRequirements.toString());
+      // Materials are always included if they exist
       
       // Add image file (if new file selected, otherwise keep existing)
       if (serviceForm.imageFile) {
@@ -514,9 +718,9 @@ export default function AdminDashboard() {
         console.log('📷 Keeping existing image');
       }
       
-      // Add extra requirements
-      if (serviceForm.hasExtraRequirements && serviceForm.extraRequirements.length > 0) {
-        formData.append('extraRequirements', JSON.stringify(serviceForm.extraRequirements));
+      // Add materials
+      if (serviceForm.materials.length > 0) {
+        formData.append('materials', JSON.stringify(serviceForm.materials));
       }
 
       console.log('📤 Sending update request to /api/services/' + editingService._id);
@@ -562,44 +766,79 @@ export default function AdminDashboard() {
     setShowServiceForm(false);
     setEditingService(null);
     setServiceForm({
-      name: { en: '', ar: '' },
-      category: { en: '', ar: '' },
+      name: '',
+      category: '',
+      categoryId: '',
+      subCategoryId: '',
+      main_category: '',
+      sub_category: '',
+      pricing_model: 'fixed',
+      fixed_price: 0,
+      fixed_duration_mins: 30,
+      hourly_rate_per_pro: 0,
+      base_duration_mins: 60,
       price: 0,
       duration: 1,
-      description: { en: '', ar: '' },
+      description: '',
       imageFile: null,
       imagePreview: null,
       perHourFee: 0,
       perPersonFee: 0,
-      hasExtraRequirements: false,
-      extraRequirements: []
+      materials: []
     });
-    setNewExtraRequirement({ name: { en: '', ar: '' }, price: 0 });
+    setNewMaterial({ name: '', price: 0 });
   };
 
   const startEditService = (service: any) => {
     setEditingService(service);
     setShowServiceForm(true);
     
-    // Parse multilingual fields
-    const name = typeof service.name === 'object' ? service.name : { en: service.name, ar: '' };
-    const category = typeof service.category === 'object' ? service.category : { en: service.category, ar: '' };
-    const description = typeof service.description === 'object' ? service.description : { en: service.description || '', ar: '' };
+    // Parse fields (handle both string and object for backward compatibility)
+    const name = typeof service.name === 'object' ? (service.name.en || service.name.ar || '') : service.name || '';
+    const category = typeof service.category === 'object' ? (service.category.en || service.category.ar || '') : service.category || '';
+    const main_category = typeof service.main_category === 'object' ? (service.main_category.en || service.main_category.ar || '') : service.main_category || '';
+    const sub_category = typeof service.sub_category === 'object' ? (service.sub_category.en || service.sub_category.ar || '') : service.sub_category || '';
+    const description = typeof service.description === 'object' ? (service.description.en || service.description.ar || '') : service.description || '';
+    
+    // Determine pricing model (default to 'fixed' if not set)
+    const pricing_model = service.pricing_model || 'fixed';
+    
+    // Parse pricing fields based on model
+    let fixed_price = service.fixed_price || service.price || 0;
+    let fixed_duration_mins = service.fixed_duration_mins || (service.duration ? service.duration * 60 : 30);
+    let hourly_rate_per_pro = service.hourly_rate_per_pro || service.perHourFee || 0;
+    let base_duration_mins = service.base_duration_mins || (service.duration ? service.duration * 60 : 60);
+    
+    // Load sub-categories if categoryId exists
+    if (service.categoryId) {
+      loadSubCategories();
+      api.get(`/categories/${service.categoryId}/subcategories`).then(res => {
+        setSubCategories(res.data);
+      }).catch(() => {});
+    }
     
     setServiceForm({
       name,
       category,
-      price: service.price,
-      duration: service.duration,
+      categoryId: typeof service.categoryId === 'object' ? (service.categoryId?._id || service.categoryId?.toString() || '') : (service.categoryId || ''),
+      subCategoryId: typeof service.subCategoryId === 'object' ? (service.subCategoryId?._id || service.subCategoryId?.toString() || '') : (service.subCategoryId || ''),
+      main_category,
+      sub_category,
+      pricing_model: pricing_model as 'fixed' | 'configurable',
+      fixed_price,
+      fixed_duration_mins,
+      hourly_rate_per_pro,
+      base_duration_mins,
+      price: service.price || 0,
+      duration: service.duration || 1,
       description,
       imageFile: null,
-      imagePreview: service.image || null,
-      perHourFee: service.perHourFee || 0,
+      imagePreview: service.image || service.thumbnail_url || null,
+      perHourFee: service.perHourFee || hourly_rate_per_pro || 0,
       perPersonFee: service.perPersonFee || 0,
-      hasExtraRequirements: service.hasExtraRequirements || false,
-      extraRequirements: (service.extraRequirements || []).map((extra: any) => ({
-        name: typeof extra.name === 'object' ? extra.name : { en: extra.name, ar: '' },
-        price: extra.price
+      materials: (service.materials || []).map((material: any) => ({
+        name: typeof material.name === 'object' ? (material.name.en || material.name.ar || '') : material.name || '',
+        price: material.price
       }))
     });
   };
@@ -627,23 +866,209 @@ export default function AdminDashboard() {
     }
   };
 
-  const addExtraRequirement = () => {
-    if (!newExtraRequirement.name.en || newExtraRequirement.price <= 0) {
-      toast.error('Please fill in extra requirement name (English) and price');
+  // Category CRUD functions
+  const handleCreateCategory = async () => {
+    try {
+      if (!categoryForm.name || categoryForm.name.trim() === '') {
+        toast.error('Category name is required');
+        return;
+      }
+
+      const formData = {
+        name: categoryForm.name,
+        description: categoryForm.description,
+        icon: categoryForm.icon
+      };
+
+      await api.post('/categories', formData);
+      toast.success('Category created successfully');
+      resetCategoryForm();
+      loadCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to create category');
+    }
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategory) return;
+    try {
+      const formData = {
+        name: categoryForm.name,
+        description: categoryForm.description,
+        icon: categoryForm.icon
+      };
+
+      await api.put(`/categories/${editingCategory._id}`, formData);
+      toast.success('Category updated successfully');
+      resetCategoryForm();
+      setEditingCategory(null);
+      loadCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update category');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    if (!confirm('Are you sure you want to delete this category?')) return;
+    try {
+      await api.delete(`/categories/${categoryId}`);
+      toast.success('Category deleted successfully');
+      loadCategories();
+      loadSubCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete category');
+    }
+  };
+
+  const resetCategoryForm = () => {
+    setShowCategoryForm(false);
+    setEditingCategory(null);
+    setCategoryForm({
+      name: '',
+      description: '',
+      icon: ''
+    });
+  };
+
+  const startEditCategory = (category: any) => {
+    setEditingCategory(category);
+    setShowCategoryForm(true);
+    const name = typeof category.name === 'object' ? (category.name.en || category.name.ar || '') : category.name || '';
+    const description = typeof category.description === 'object' ? (category.description.en || category.description.ar || '') : category.description || '';
+    setCategoryForm({ name, description, icon: category.icon || '' });
+  };
+
+  // SubCategory CRUD functions
+  const handleCreateSubCategory = async () => {
+    try {
+      if (!subCategoryForm.categoryId || !subCategoryForm.name || subCategoryForm.name.trim() === '') {
+        toast.error('Category and sub-category name are required');
+        return;
+      }
+
+      if (!subCategoryForm.imageFile) {
+        toast.error('Please select an image for the sub-category');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('name', subCategoryForm.name);
+      formData.append('description', subCategoryForm.description);
+      formData.append('image', subCategoryForm.imageFile);
+
+      await api.post(`/categories/${subCategoryForm.categoryId}/subcategories`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      toast.success('Sub-category created successfully');
+      resetSubCategoryForm();
+      loadSubCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to create sub-category');
+    }
+  };
+
+  const handleUpdateSubCategory = async () => {
+    if (!editingSubCategory) return;
+    try {
+      const formData = new FormData();
+      formData.append('name', subCategoryForm.name);
+      formData.append('description', subCategoryForm.description);
+      if (subCategoryForm.imageFile) {
+        formData.append('image', subCategoryForm.imageFile);
+      }
+
+      await api.put(`/categories/subcategories/${editingSubCategory._id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      toast.success('Sub-category updated successfully');
+      resetSubCategoryForm();
+      setEditingSubCategory(null);
+      loadSubCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update sub-category');
+    }
+  };
+
+  const handleDeleteSubCategory = async (subCategoryId: string) => {
+    if (!confirm('Are you sure you want to delete this sub-category?')) return;
+    try {
+      await api.delete(`/categories/subcategories/${subCategoryId}`);
+      toast.success('Sub-category deleted successfully');
+      loadSubCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete sub-category');
+    }
+  };
+
+  const resetSubCategoryForm = () => {
+    setShowSubCategoryForm(false);
+    setEditingSubCategory(null);
+    if (subCategoryForm.imagePreview && subCategoryForm.imagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(subCategoryForm.imagePreview);
+    }
+    setSubCategoryForm({
+      categoryId: '',
+      name: '',
+      description: '',
+      imageFile: null,
+      imagePreview: null
+    });
+  };
+
+  const startEditSubCategory = (subCategory: any) => {
+    setEditingSubCategory(subCategory);
+    setShowSubCategoryForm(true);
+    const name = typeof subCategory.name === 'object' ? (subCategory.name.en || subCategory.name.ar || '') : subCategory.name || '';
+    const description = typeof subCategory.description === 'object' ? (subCategory.description.en || subCategory.description.ar || '') : subCategory.description || '';
+    setSubCategoryForm({
+      categoryId: subCategory.categoryId?._id || subCategory.categoryId || '',
+      name,
+      description,
+      imageFile: null,
+      imagePreview: subCategory.image || null
+    });
+  };
+
+  const handleSubCategoryImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size should be less than 5MB');
+        return;
+      }
+      setSubCategoryForm({
+        ...subCategoryForm,
+        imageFile: file,
+        imagePreview: URL.createObjectURL(file)
+      });
+    }
+  };
+
+  const addMaterial = () => {
+    if (!newMaterial.name || newMaterial.price <= 0) {
+      toast.error('Please fill in material name and price');
       return;
     }
     
     setServiceForm({
       ...serviceForm,
-      extraRequirements: [...serviceForm.extraRequirements, { ...newExtraRequirement }]
+      materials: [...serviceForm.materials, { ...newMaterial }]
     });
-    setNewExtraRequirement({ name: { en: '', ar: '' }, price: 0 });
+    setNewMaterial({ name: '', price: 0 });
   };
 
-  const removeExtraRequirement = (index: number) => {
+  const removeMaterial = (index: number) => {
     setServiceForm({
       ...serviceForm,
-      extraRequirements: serviceForm.extraRequirements.filter((_, i) => i !== index)
+      materials: serviceForm.materials.filter((_, i) => i !== index)
     });
   };
 
@@ -722,6 +1147,7 @@ export default function AdminDashboard() {
     { id: 'expired' as Tab, label: 'Expired Orders', icon: AlertCircle, badge: null },
     { id: 'refunds' as Tab, label: 'Refunds', icon: DollarSign, badge: null },
     { id: 'services' as Tab, label: 'Services', icon: Package, badge: null },
+    { id: 'categories' as Tab, label: 'Categories', icon: FolderTree, badge: null },
     { id: 'commission' as Tab, label: 'Commission', icon: Settings, badge: null },
     { id: 'performance' as Tab, label: 'Performance', icon: TrendingUp, badge: null },
   ];
@@ -823,7 +1249,9 @@ export default function AdminDashboard() {
                   {pendingBookings.slice(0, 5).map((booking) => (
                     <tr key={booking._id} className="border-b hover:bg-gray-50">
                       <td className="p-2">{booking.customerId?.name}</td>
-                      <td className="p-2">{booking.serviceId?.name}</td>
+                      <td className="p-2">
+                        {booking.serviceId?.name || 'N/A'}
+                      </td>
                       <td className="p-2">
                         {new Date(booking.scheduledDate).toLocaleDateString()}
                       </td>
@@ -1379,11 +1807,18 @@ export default function AdminDashboard() {
                       </td>
                       <td className="p-2">
                         <div>
-                          <p className="font-medium">{booking.serviceId?.name}</p>
-                          <p className="text-xs text-gray-500">{booking.serviceId?.category}</p>
+                          <p className="font-medium">
+                            {booking.serviceId?.name || 'N/A'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {booking.serviceId?.category || ''}
+                          </p>
                         </div>
                       </td>
-                      <td className="p-2">${booking.totalAmount?.toFixed(2) || booking.serviceId?.price.toFixed(2)}</td>
+                      <td className="p-2">
+                        AED {booking.totalAmount?.toFixed(2) || 
+                          (booking.serviceId?.price ? booking.serviceId.price.toFixed(2) : '0.00')}
+                      </td>
                       <td className="p-2">
                         {new Date(booking.scheduledDate).toLocaleDateString()}
                       </td>
@@ -1464,98 +1899,189 @@ export default function AdminDashboard() {
                 {editingService ? 'Edit Service' : 'Add New Service'}
               </h3>
               
-              {/* Multilingual Name */}
+              {/* Service Name */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Service Name *</label>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Input
-                      placeholder="Name (English) *"
-                      value={serviceForm.name.en}
-                      onChange={(e) => setServiceForm({ ...serviceForm, name: { ...serviceForm.name, en: e.target.value } })}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="Name (Arabic)"
-                      value={serviceForm.name.ar}
-                      onChange={(e) => setServiceForm({ ...serviceForm, name: { ...serviceForm.name, ar: e.target.value } })}
-                    />
-                  </div>
-                </div>
+                <Input
+                  placeholder="Service Name *"
+                  value={serviceForm.name}
+                  onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                />
               </div>
 
-              {/* Multilingual Category */}
+              {/* Category Selection */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Category *</label>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Input
-                      placeholder="Category (English) *"
-                      value={serviceForm.category.en}
-                      onChange={(e) => setServiceForm({ ...serviceForm, category: { ...serviceForm.category, en: e.target.value } })}
+                <select
+                  value={serviceForm.categoryId}
+                  onChange={async (e) => {
+                    const categoryId = e.target.value;
+                    setServiceForm({ ...serviceForm, categoryId, subCategoryId: '' });
+                    if (categoryId) {
+                      const selectedCat = categories.find(c => c._id === categoryId);
+                      if (selectedCat) {
+                        const catName = typeof selectedCat.name === 'object' ? (selectedCat.name.en || selectedCat.name.ar || '') : selectedCat.name || '';
+                        setServiceForm(prev => ({ 
+                          ...prev, 
+                          categoryId,
+                          category: catName,
+                          main_category: catName
+                        }));
+                        // Load sub-categories for this category
+                        try {
+                          const response = await api.get(`/categories/${categoryId}/subcategories`);
+                          setSubCategories(response.data);
+                        } catch (error) {
+                          console.error('Failed to load sub-categories');
+                        }
+                      }
+                    }
+                  }}
+                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 mb-3"
+                  required
+                >
+                  <option value="">Select Category</option>
+                  {categories.map((cat) => {
+                    const catName = typeof cat.name === 'object' ? (cat.name.en || cat.name.ar || '') : cat.name || '';
+                    return <option key={cat._id} value={cat._id}>{catName}</option>;
+                  })}
+                </select>
+
+                <label className="block text-sm font-medium mb-2">Sub-Category</label>
+                <select
+                  value={serviceForm.subCategoryId}
+                  onChange={(e) => {
+                    const subCategoryId = e.target.value;
+                    const selectedSub = subCategories.find(s => s._id === subCategoryId);
+                    if (selectedSub) {
+                      const subName = typeof selectedSub.name === 'object' ? (selectedSub.name.en || selectedSub.name.ar || '') : selectedSub.name || '';
+                      setServiceForm(prev => ({ 
+                        ...prev, 
+                        subCategoryId,
+                        sub_category: subName
+                        // Don't overwrite category - keep the main category
+                      }));
+                    } else {
+                      setServiceForm(prev => ({ ...prev, subCategoryId: '', sub_category: '' }));
+                    }
+                  }}
+                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  disabled={!serviceForm.categoryId}
+                >
+                  <option value="">Select Sub-Category (Optional)</option>
+                  {subCategories
+                    .filter(sub => sub.categoryId === serviceForm.categoryId || sub.categoryId?._id === serviceForm.categoryId)
+                    .map((sub) => {
+                      const subName = typeof sub.name === 'object' ? (sub.name.en || sub.name.ar || '') : sub.name || '';
+                      return <option key={sub._id} value={sub._id}>{subName}</option>;
+                    })}
+                </select>
+              </div>
+
+              {/* Pricing Model Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Pricing Model *</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pricing_model"
+                      value="fixed"
+                      checked={serviceForm.pricing_model === 'fixed'}
+                      onChange={() => setServiceForm({ ...serviceForm, pricing_model: 'fixed' as const })}
+                      className="w-4 h-4"
                     />
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="Category (Arabic)"
-                      value={serviceForm.category.ar}
-                      onChange={(e) => setServiceForm({ ...serviceForm, category: { ...serviceForm.category, ar: e.target.value } })}
+                    <span>Fixed Package (One final price)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pricing_model"
+                      value="configurable"
+                      checked={serviceForm.pricing_model === 'configurable'}
+                      onChange={() => setServiceForm({ ...serviceForm, pricing_model: 'configurable' as const })}
+                      className="w-4 h-4"
                     />
-                  </div>
+                    <span>Configurable (Hourly Rate × Professionals × Hours)</span>
+                  </label>
                 </div>
               </div>
 
-              {/* Price and Duration */}
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Base Price *</label>
-                  <Input
-                    type="number"
-                    placeholder="Base Price"
-                    value={serviceForm.price}
-                    onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) || 0 })}
-                    min="0"
-                    step="0.01"
-                  />
+              {/* Fixed Pricing Fields */}
+              {serviceForm.pricing_model === 'fixed' && (
+                <div className="grid md:grid-cols-2 gap-4 mb-4 border rounded p-4 bg-gray-50">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Fixed Price (AED) *</label>
+                    <Input
+                      type="number"
+                      placeholder="Fixed Price"
+                      value={serviceForm.fixed_price}
+                      onChange={(e) => setServiceForm({ 
+                        ...serviceForm, 
+                        fixed_price: parseFloat(e.target.value) || 0,
+                        price: parseFloat(e.target.value) || 0 // Legacy support
+                      })}
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Duration (minutes) *</label>
+                    <Input
+                      type="number"
+                      placeholder="Duration in minutes"
+                      value={serviceForm.fixed_duration_mins}
+                      onChange={(e) => setServiceForm({ 
+                        ...serviceForm, 
+                        fixed_duration_mins: parseInt(e.target.value) || 30,
+                        duration: Math.ceil((parseInt(e.target.value) || 30) / 60) // Convert to hours for legacy
+                      })}
+                      min="1"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Duration (hours) *</label>
-                  <Input
-                    type="number"
-                    placeholder="Duration"
-                    value={serviceForm.duration}
-                    onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) || 1 })}
-                    min="1"
-                  />
-                </div>
-              </div>
+              )}
 
-              {/* Per Hour and Per Person Fees */}
-              <div className="grid md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Per Hour Fee</label>
-                  <Input
-                    type="number"
-                    placeholder="Per Hour Fee"
-                    value={serviceForm.perHourFee}
-                    onChange={(e) => setServiceForm({ ...serviceForm, perHourFee: parseFloat(e.target.value) || 0 })}
-                    min="0"
-                    step="0.01"
-                  />
+              {/* Configurable Pricing Fields */}
+              {serviceForm.pricing_model === 'configurable' && (
+                <div className="border rounded p-4 bg-gray-50 mb-4 space-y-4">
+                  <h4 className="font-medium mb-3">Configurable Pricing</h4>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Hourly Rate per Professional (AED) *</label>
+                      <Input
+                        type="number"
+                        placeholder="Hourly Rate"
+                        value={serviceForm.hourly_rate_per_pro}
+                        onChange={(e) => setServiceForm({ 
+                          ...serviceForm, 
+                          hourly_rate_per_pro: parseFloat(e.target.value) || 0,
+                          perHourFee: parseFloat(e.target.value) || 0 // Legacy support
+                        })}
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Base Duration (minutes) *</label>
+                      <Input
+                        type="number"
+                        placeholder="Base Duration"
+                        value={serviceForm.base_duration_mins}
+                        onChange={(e) => setServiceForm({ 
+                          ...serviceForm, 
+                          base_duration_mins: parseInt(e.target.value) || 60,
+                          duration: Math.ceil((parseInt(e.target.value) || 60) / 60) // Convert to hours for legacy
+                        })}
+                        min="1"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Total = Hourly Rate × Professionals × Hours
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Per Person Fee</label>
-                  <Input
-                    type="number"
-                    placeholder="Per Person Fee"
-                    value={serviceForm.perPersonFee}
-                    onChange={(e) => setServiceForm({ ...serviceForm, perPersonFee: parseFloat(e.target.value) || 0 })}
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Image Upload */}
               <div className="mb-4">
@@ -1598,86 +2124,59 @@ export default function AdminDashboard() {
               {/* Multilingual Description */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Description</label>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <textarea
-                    className="border rounded p-2"
-                    placeholder="Description (English)"
-                    value={serviceForm.description.en}
-                    onChange={(e) => setServiceForm({ ...serviceForm, description: { ...serviceForm.description, en: e.target.value } })}
-                    rows={3}
-                  />
-                  <textarea
-                    className="border rounded p-2"
-                    placeholder="Description (Arabic)"
-                    value={serviceForm.description.ar}
-                    onChange={(e) => setServiceForm({ ...serviceForm, description: { ...serviceForm.description, ar: e.target.value } })}
-                    rows={3}
-                  />
-                </div>
+                <textarea
+                  className="border rounded p-2 w-full"
+                  placeholder="Description"
+                  value={serviceForm.description}
+                  onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+                  rows={3}
+                />
               </div>
 
-              {/* Extra Requirements */}
+              {/* Materials List */}
               <div className="mb-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <input
-                    type="checkbox"
-                    id="hasExtraRequirements"
-                    checked={serviceForm.hasExtraRequirements}
-                    onChange={(e) => setServiceForm({ ...serviceForm, hasExtraRequirements: e.target.checked })}
-                  />
-                  <label htmlFor="hasExtraRequirements" className="text-sm font-medium">Has Extra Requirements</label>
-                </div>
-
-                {serviceForm.hasExtraRequirements && (
-                  <div className="border rounded p-4 space-y-4">
-                    <h4 className="font-medium">Extra Requirements</h4>
-                    
-                    {/* Add New Extra Requirement */}
-                    <div className="grid md:grid-cols-4 gap-2">
-                      <Input
-                        placeholder="Name (English) *"
-                        value={newExtraRequirement.name.en}
-                        onChange={(e) => setNewExtraRequirement({ ...newExtraRequirement, name: { ...newExtraRequirement.name, en: e.target.value } })}
-                      />
-                      <Input
-                        placeholder="Name (Arabic)"
-                        value={newExtraRequirement.name.ar}
-                        onChange={(e) => setNewExtraRequirement({ ...newExtraRequirement, name: { ...newExtraRequirement.name, ar: e.target.value } })}
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Price *"
-                        value={newExtraRequirement.price}
-                        onChange={(e) => setNewExtraRequirement({ ...newExtraRequirement, price: parseFloat(e.target.value) || 0 })}
-                        min="0"
-                        step="0.01"
-                      />
-                      <Button size="sm" onClick={addExtraRequirement}>Add</Button>
-                    </div>
-
-                    {/* List of Extra Requirements */}
-                    {serviceForm.extraRequirements.length > 0 && (
-                      <div className="space-y-2">
-                        {serviceForm.extraRequirements.map((extra, index) => (
-                          <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                            <div className="flex-1">
-                              <span className="font-medium">{extra.name.en}</span>
-                              {extra.name.ar && <span className="text-gray-500 ml-2">({extra.name.ar})</span>}
-                              <span className="ml-2 text-primary-600">${extra.price.toFixed(2)}</span>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => removeExtraRequirement(index)}
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                <div className="border rounded p-4 space-y-4">
+                  <h4 className="font-medium">Materials List</h4>
+                  
+                  {/* Add New Material */}
+                  <div className="grid md:grid-cols-3 gap-2">
+                    <Input
+                      placeholder="Material Name (e.g., 2 brushes) *"
+                      value={newMaterial.name}
+                      onChange={(e) => setNewMaterial({ ...newMaterial, name: e.target.value })}
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Price (AED) *"
+                      value={newMaterial.price}
+                      onChange={(e) => setNewMaterial({ ...newMaterial, price: parseFloat(e.target.value) || 0 })}
+                      min="0"
+                      step="0.01"
+                    />
+                    <Button size="sm" onClick={addMaterial}>Add Material</Button>
                   </div>
-                )}
+
+                  {/* List of Materials */}
+                  {serviceForm.materials.length > 0 && (
+                    <div className="space-y-2">
+                      {serviceForm.materials.map((material, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                          <div className="flex-1">
+                            <span className="font-medium">{material.name}</span>
+                            <span className="ml-2 text-primary-600">AED {material.price.toFixed(2)}</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => removeMaterial(index)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-2 mt-4">
@@ -1693,10 +2192,13 @@ export default function AdminDashboard() {
 
           <div className="grid md:grid-cols-3 gap-4">
             {services.map((service) => {
-              // Handle multilingual fields
-              const serviceName = typeof service.name === 'object' ? service.name.en : service.name;
-              const serviceCategory = typeof service.category === 'object' ? service.category.en : service.category;
-              const serviceDescription = typeof service.description === 'object' ? service.description.en : service.description;
+              const pricingModel = service.pricing_model || 'fixed';
+              const displayPrice = pricingModel === 'fixed' 
+                ? (service.fixed_price || service.price || 0)
+                : (service.hourly_rate_per_pro || service.perHourFee || 0);
+              const displayDuration = pricingModel === 'fixed'
+                ? (service.fixed_duration_mins ? Math.ceil(service.fixed_duration_mins / 60) : service.duration)
+                : (service.base_duration_mins ? Math.ceil(service.base_duration_mins / 60) : service.duration);
               
               return (
                 <Card key={service._id} className="p-4 relative">
@@ -1718,26 +2220,43 @@ export default function AdminDashboard() {
                   </div>
                   
                   {service.image && (
-                    <img src={service.image} alt={serviceName} className="w-full h-48 object-cover rounded mb-4" />
+                    <img src={service.image} alt={service.name} className="w-full h-48 object-cover rounded mb-4" />
                   )}
-                  <h3 className="font-semibold text-lg mb-2 pr-16">{serviceName}</h3>
-                  <p className="text-sm text-gray-600 mb-2">{serviceCategory}</p>
-                  {serviceDescription && (
-                    <p className="text-sm mb-2 line-clamp-2">{serviceDescription}</p>
+                  <div className="mb-2">
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      pricingModel === 'fixed' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {pricingModel === 'fixed' ? 'Fixed' : 'Hourly'}
+                    </span>
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2 pr-16">{service.name || 'Unnamed Service'}</h3>
+                  <p className="text-sm text-gray-600 mb-2">{service.category || 'No Category'}</p>
+                  {service.description && (
+                    <p className="text-sm mb-2 line-clamp-2">{service.description}</p>
                   )}
                   <div className="text-sm space-y-1">
-                    <p>Base Price: ${service.price.toFixed(2)}</p>
-                    {service.perHourFee > 0 && <p>Per Hour: ${service.perHourFee.toFixed(2)}</p>}
-                    {service.perPersonFee > 0 && <p>Per Person: ${service.perPersonFee.toFixed(2)}</p>}
-                    {service.duration > 0 && <p>Duration: {service.duration} hour(s)</p>}
-                    {service.hasExtraRequirements && service.extraRequirements && service.extraRequirements.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-primary-600 font-medium">Extra Requirements:</p>
+                    {pricingModel === 'fixed' ? (
+                      <>
+                        <p className="font-semibold text-primary-600">Price: AED {displayPrice.toFixed(2)}</p>
+                        <p>Duration: {displayDuration} hour(s)</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold text-primary-600">Hourly Rate: AED {displayPrice.toFixed(2)}/hr</p>
+                        <p>Base Duration: {displayDuration} hour(s)</p>
+                        <p className="text-xs text-gray-500">Price = Rate × Professionals × Hours</p>
+                      </>
+                    )}
+                    {service.materials && service.materials.length > 0 && (
+                      <div className="mt-2 pt-2 border-t">
+                        <p className="text-primary-600 font-medium text-xs">Materials:</p>
                         <ul className="list-disc list-inside text-xs space-y-1 mt-1">
-                          {service.extraRequirements.map((extra: any, idx: number) => {
-                            const extraName = typeof extra.name === 'object' ? extra.name.en : extra.name;
+                          {service.materials.map((material: any, idx: number) => {
+                            const materialName = typeof material.name === 'object' ? (material.name.en || material.name.ar || '') : material.name || '';
                             return (
-                              <li key={idx}>{extraName} - ${extra.price.toFixed(2)}</li>
+                              <li key={idx}>{materialName} - AED {material.price.toFixed(2)}</li>
                             );
                           })}
                         </ul>
@@ -1748,6 +2267,200 @@ export default function AdminDashboard() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Categories Tab */}
+      {activeTab === 'categories' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Categories & Sub-Categories</h2>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowSubCategoryForm(true)}>Add Sub-Category</Button>
+              <Button onClick={() => setShowCategoryForm(true)}>Add Category</Button>
+            </div>
+          </div>
+
+          {/* Category Form */}
+          {showCategoryForm && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4">
+                {editingCategory ? 'Edit Category' : 'Add New Category'}
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Category Name *</label>
+                  <Input
+                    placeholder="Category Name *"
+                    value={categoryForm.name}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Description</label>
+                  <textarea
+                    className="border rounded p-2 w-full"
+                    placeholder="Description"
+                    value={categoryForm.description}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={editingCategory ? handleUpdateCategory : handleCreateCategory}>
+                    {editingCategory ? 'Update' : 'Create'}
+                  </Button>
+                  <Button variant="outline" onClick={resetCategoryForm}>Cancel</Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Sub-Category Form */}
+          {showSubCategoryForm && (
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4">
+                {editingSubCategory ? 'Edit Sub-Category' : 'Add New Sub-Category'}
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Category *</label>
+                  <select
+                    value={subCategoryForm.categoryId}
+                    onChange={(e) => {
+                      setSubCategoryForm({ ...subCategoryForm, categoryId: e.target.value });
+                      if (e.target.value) {
+                        loadSubCategories();
+                      }
+                    }}
+                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    {categories.map((cat) => {
+                      const catName = typeof cat.name === 'object' ? cat.name.en : cat.name;
+                      return <option key={cat._id} value={cat._id}>{catName}</option>;
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Sub-Category Name *</label>
+                  <Input
+                    placeholder="Sub-Category Name *"
+                    value={subCategoryForm.name}
+                    onChange={(e) => setSubCategoryForm({ ...subCategoryForm, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Description</label>
+                  <textarea
+                    className="border rounded p-2 w-full"
+                    placeholder="Description"
+                    value={subCategoryForm.description}
+                    onChange={(e) => setSubCategoryForm({ ...subCategoryForm, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">Sub-Category Image *</label>
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSubCategoryImageChange}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                    />
+                    {subCategoryForm.imageFile && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600 mb-2">Selected: {subCategoryForm.imageFile.name}</p>
+                        {subCategoryForm.imagePreview && (
+                          <img 
+                            src={subCategoryForm.imagePreview} 
+                            alt="Preview" 
+                            className="h-48 w-full object-cover rounded border border-gray-300" 
+                          />
+                        )}
+                      </div>
+                    )}
+                    {!subCategoryForm.imageFile && subCategoryForm.imagePreview && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600 mb-2">Current Image:</p>
+                        <img 
+                          src={subCategoryForm.imagePreview} 
+                          alt="Current" 
+                          className="h-48 w-full object-cover rounded border border-gray-300" 
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={editingSubCategory ? handleUpdateSubCategory : handleCreateSubCategory}>
+                    {editingSubCategory ? 'Update' : 'Create'}
+                  </Button>
+                  <Button variant="outline" onClick={resetSubCategoryForm}>Cancel</Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Categories List */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Categories</h3>
+            <div className="space-y-4">
+              {categories.map((category) => {
+                const catName = typeof category.name === 'object' ? (category.name.en || category.name.ar || '') : category.name || '';
+                const catDesc = typeof category.description === 'object' ? (category.description.en || category.description.ar || '') : category.description || '';
+                const categorySubs = subCategories.filter(sub => 
+                  sub.categoryId === category._id || sub.categoryId?._id === category._id
+                );
+                return (
+                  <div key={category._id} className="border rounded p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-semibold">{catName}</h4>
+                        {catDesc && <p className="text-sm text-gray-600">{catDesc}</p>}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => startEditCategory(category)}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => handleDeleteCategory(category._id)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                    {categorySubs.length > 0 && (
+                      <div className="mt-3 pl-4 border-l-2 border-gray-200">
+                        <p className="text-sm font-medium text-gray-700 mb-2">Sub-Categories:</p>
+                        <div className="space-y-2">
+                          {categorySubs.map((sub) => {
+                            const subName = typeof sub.name === 'object' ? (sub.name.en || sub.name.ar || '') : sub.name || '';
+                            return (
+                              <div key={sub._id} className="flex justify-between items-center text-sm">
+                                <span>{subName}</span>
+                                <div className="flex gap-2">
+                                  <Button size="sm" variant="outline" onClick={() => startEditSubCategory(sub)}>
+                                    Edit
+                                  </Button>
+                                  <Button size="sm" variant="danger" onClick={() => handleDeleteSubCategory(sub._id)}>
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {categories.length === 0 && (
+                <p className="text-center text-gray-500 py-8">No categories found. Add your first category above.</p>
+              )}
+            </div>
+          </Card>
         </div>
       )}
 

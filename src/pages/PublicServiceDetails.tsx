@@ -11,18 +11,38 @@ import { useLanguage } from '../context/LanguageContext';
 import { useBreadcrumb } from '../context/BreadcrumbContext';
 import { translateService, useTranslator } from '../lib/translator';
 
+interface Material {
+  _id: string;
+  name: string | { en: string; ar?: string };
+  fee: number;
+  description?: string | { en: string; ar?: string };
+  instructions?: string | { en: string; ar?: string };
+}
+
 interface Service {
   _id: string;
   name: string | { en: string; ar?: string };
   category: string | { en: string; ar?: string };
+  pricing_model?: 'fixed' | 'configurable';
+  // Fixed pricing fields
+  fixed_price?: number;
+  fixed_duration_mins?: number;
+  // Configurable pricing fields
+  hourly_rate_per_pro?: number;
+  base_fee?: number;
+  base_duration_mins?: number;
+  // Material fields - array of material references
+  materials?: Material[] | string[];
+  material_fee?: number;
+  material_instructions?: string | { en: string; ar?: string };
+  // Legacy fields
   price: number;
   duration: number;
   description: string | { en: string; ar?: string };
   image: string;
   perHourFee: number;
   perPersonFee: number;
-  hasExtraRequirements: boolean;
-  extraRequirements: Array<{ name: string | { en: string; ar?: string }; price: number }>;
+  materials: Array<{ name: string; price: number }>;
 }
 
 export default function PublicServiceDetails() {
@@ -41,11 +61,21 @@ export default function PublicServiceDetails() {
     address: '',
     paymentMethod: 'online',
     notes: '',
+    // Legacy fields
     hours: 1,
     numberOfPeople: 1,
-    selectedExtras: [] as number[], // Store indices instead of names
+    // New dual pricing fields
+    selected_professionals: 1,
+    selected_hours: 1,
+    needs_materials: false,
   });
   const [totalAmount, setTotalAmount] = useState(0);
+  const [priceBreakdown, setPriceBreakdown] = useState({
+    base_fee: 0,
+    hourly_rate: 0,
+    material_fee: 0,
+    total: 0
+  });
 
   useEffect(() => {
     loadService();
@@ -55,7 +85,8 @@ export default function PublicServiceDetails() {
     if (service) {
       calculateTotal();
     }
-  }, [service, bookingData.hours, bookingData.numberOfPeople, bookingData.selectedExtras]);
+  }, [service, bookingData.hours, bookingData.numberOfPeople, 
+      bookingData.selected_professionals, bookingData.selected_hours, bookingData.needs_materials]);
 
   const loadService = async () => {
     try {
@@ -81,43 +112,69 @@ export default function PublicServiceDetails() {
     }
   }, [language, service, id, translate, addBreadcrumb]);
 
-  const calculateTotal = () => {
+  const calculateTotal = async () => {
     if (!service) return;
-    let total = service.price || 0;
-    if (service.perHourFee > 0) {
-      total += service.perHourFee * bookingData.hours;
-    }
-    if (service.perPersonFee > 0) {
-      total += service.perPersonFee * bookingData.numberOfPeople;
-    }
-    bookingData.selectedExtras.forEach((extraIdx) => {
-      const extra = service.extraRequirements[extraIdx];
-      if (extra) {
-        total += extra.price;
+    
+    const pricingModel = service.pricing_model || 'fixed';
+    
+    if (pricingModel === 'fixed') {
+      // Fixed pricing: use fixed_price
+      const fixedPrice = service.fixed_price || service.price || 0;
+      let total = fixedPrice;
+      
+      // Add materials if needs_materials is true
+      let materialsTotal = 0;
+      if (bookingData.needs_materials && service.materials && Array.isArray(service.materials)) {
+        materialsTotal = service.materials.reduce((sum, material) => sum + (material.price || 0), 0);
+        total += materialsTotal;
       }
-    });
-    setTotalAmount(total);
+      
+      setTotalAmount(total);
+      setPriceBreakdown({
+        base_fee: fixedPrice,
+        hourly_rate: 0,
+        material_fee: materialsTotal,
+        total
+      });
+    } else {
+      // Configurable pricing: calculate using API
+      try {
+        const response = await api.post('/bookings/calculate', {
+          serviceId: service._id,
+          selected_professionals: bookingData.selected_professionals,
+          selected_hours: bookingData.selected_hours,
+          needs_materials: bookingData.needs_materials
+        });
+        
+        const breakdown = response.data.breakdown;
+        let total = breakdown.total;
+        
+        setTotalAmount(total);
+        setPriceBreakdown({
+          ...breakdown,
+          total
+        });
+      } catch (error) {
+        console.error('Failed to calculate price:', error);
+        // Fallback to legacy calculation
+        let total = service.base_fee || service.price || 0;
+        const hourlyRate = service.hourly_rate_per_pro || service.perHourFee || 0;
+        total += hourlyRate * bookingData.selected_professionals * bookingData.selected_hours;
+        
+        if (bookingData.needs_materials && service.material_fee) {
+          total += service.material_fee;
+        }
+        
+        setTotalAmount(total);
+      }
+    }
   };
 
   const handleBookService = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const selectedExtrasData = bookingData.selectedExtras.map((selectedExtra) => {
-        // Find the extra by index since we're storing indices
-        const extra = service?.extraRequirements[selectedExtra];
-        if (extra) {
-          // Store the original name (could be object or string)
-          const extraName = extra.name;
-          let originalName: string;
-          if (typeof extraName === 'object' && extraName !== null) {
-            originalName = extraName.en || extraName.ar || JSON.stringify(extraName);
-          } else {
-            originalName = extraName as string;
-          }
-          return { name: originalName, price: extra.price };
-        }
-        return null;
-      }).filter(Boolean) as Array<{ name: string; price: number }>;
+      // Materials list (always included, even if not selected)
+      const materialsList = service?.materials || [];
 
       await api.post('/bookings', {
         serviceId: id,
@@ -128,9 +185,14 @@ export default function PublicServiceDetails() {
         address: bookingData.address,
         paymentMethod: bookingData.paymentMethod,
         notes: bookingData.notes,
-        hours: bookingData.hours,
-        numberOfPeople: bookingData.numberOfPeople,
-        selectedExtras: selectedExtrasData,
+        // Legacy fields
+        hours: bookingData.selected_hours || bookingData.hours,
+        numberOfPeople: bookingData.selected_professionals || bookingData.numberOfPeople,
+        materials_list: materialsList,
+        // New dual pricing fields
+        selected_professionals: bookingData.selected_professionals || bookingData.numberOfPeople,
+        selected_hours: bookingData.selected_hours || bookingData.hours,
+        needs_materials: bookingData.needs_materials,
       });
       toast.success('Booking created successfully! Your request has been sent to admin.');
       setShowBookingForm(false);
@@ -144,7 +206,9 @@ export default function PublicServiceDetails() {
         notes: '',
         hours: 1,
         numberOfPeople: 1,
-        selectedExtras: [],
+        selected_professionals: 1,
+        selected_hours: 1,
+        needs_materials: false,
       });
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to create booking');
@@ -187,48 +251,53 @@ export default function PublicServiceDetails() {
             <p className="text-primary-600 font-medium">{translate(service.category)}</p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-primary-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">{t('services.basePrice')}</p>
-                <p className="text-2xl font-bold text-gray-900">${service.price}</p>
-              </div>
+          {/* Pricing Model Badge */}
+          {service.pricing_model && (
+            <div className="mb-4">
+              <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
+                service.pricing_model === 'fixed' 
+                  ? 'bg-green-100 text-green-800' 
+                  : 'bg-blue-100 text-blue-800'
+              }`}>
+                {service.pricing_model === 'fixed' ? 'Fixed Package' : 'Hourly Rate'}
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-primary-600" />
+          )}
+
+          {/* Service Pricing Display */}
+          {service.pricing_model === 'fixed' ? (
+            <div className="grid md:grid-cols-2 gap-6 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+                  <DollarSign className="w-6 h-6 text-primary-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Fixed Price</p>
+                  <p className="text-2xl font-bold text-gray-900">AED {service.fixed_price || service.price}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">{t('services.duration')}</p>
-                <p className="text-2xl font-bold text-gray-900">{service.duration} {t('services.hours')}</p>
-              </div>
-            </div>
-            {service.perHourFee > 0 && (
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
                   <Clock className="w-6 h-6 text-primary-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">{t('services.perHourFee')}</p>
-                  <p className="text-2xl font-bold text-gray-900">${service.perHourFee}</p>
+                  <p className="text-sm text-gray-600">Duration</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {service.fixed_duration_mins ? `${service.fixed_duration_mins} mins` : `${service.duration} hours`}
+                  </p>
                 </div>
               </div>
-            )}
-            {service.perPersonFee > 0 && (
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-primary-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">{t('services.perPersonFee')}</p>
-                  <p className="text-2xl font-bold text-gray-900">${service.perPersonFee}</p>
-                </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <h3 className="font-semibold mb-3">Pricing Structure</h3>
+              <div className="space-y-2 text-sm">
+                <p><span className="font-medium">Base Fee:</span> AED {service.base_fee || service.price || 0}</p>
+                <p><span className="font-medium">Hourly Rate:</span> AED {service.hourly_rate_per_pro || service.perHourFee || 0} per professional/hour</p>
+                <p className="text-gray-600 italic">Total = Base Fee + (Hourly Rate × Professionals × Hours)</p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {service.description && (
             <div className="mb-6">
@@ -310,69 +379,229 @@ export default function PublicServiceDetails() {
                       : t('services.payCash')}
                   </p>
                 </div>
-                {service.perHourFee > 0 && (
+                {/* Configurable Pricing Fields */}
+                {service.pricing_model === 'configurable' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Number of Professionals *</label>
+                      <div className="flex gap-4 mb-2">
+                        {[1, 2, 3].map((num) => (
+                          <label key={num} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="professionals"
+                              value={num}
+                              checked={bookingData.selected_professionals === num}
+                              onChange={(e) => setBookingData({ 
+                                ...bookingData, 
+                                selected_professionals: num,
+                                numberOfPeople: num // Legacy support
+                              })}
+                              className="w-4 h-4"
+                            />
+                            <span>{num}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Number of Hours *</label>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm text-gray-600">2</span>
+                        <input
+                          type="range"
+                          min="2"
+                          max="8"
+                          value={bookingData.selected_hours}
+                          onChange={(e) => setBookingData({ 
+                            ...bookingData, 
+                            selected_hours: parseInt(e.target.value),
+                            hours: parseInt(e.target.value) // Legacy support
+                          })}
+                          className="flex-1"
+                        />
+                        <span className="text-sm text-gray-600">8</span>
+                        <span className="text-sm font-semibold min-w-[60px]">Selected: {bookingData.selected_hours} hours</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+                
+                {/* Legacy fields for backward compatibility */}
+                {!service.pricing_model && service.perHourFee > 0 && (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t('services.numberOfHours')} *</label>
                     <Input
                       type="number"
                       min="1"
                       value={bookingData.hours}
-                      onChange={(e) => setBookingData({ ...bookingData, hours: parseInt(e.target.value) || 1 })}
+                      onChange={(e) => setBookingData({ 
+                        ...bookingData, 
+                        hours: parseInt(e.target.value) || 1,
+                        selected_hours: parseInt(e.target.value) || 1
+                      })}
                       required
                     />
                   </div>
                 )}
-                {service.perPersonFee > 0 && (
+                {!service.pricing_model && service.perPersonFee > 0 && (
                   <div>
                     <label className="block text-sm font-medium mb-1">{t('services.numberOfPeople')} *</label>
                     <Input
                       type="number"
                       min="1"
                       value={bookingData.numberOfPeople}
-                      onChange={(e) => setBookingData({ ...bookingData, numberOfPeople: parseInt(e.target.value) || 1 })}
+                      onChange={(e) => setBookingData({ 
+                        ...bookingData, 
+                        numberOfPeople: parseInt(e.target.value) || 1,
+                        selected_professionals: parseInt(e.target.value) || 1
+                      })}
                       required
                     />
                   </div>
                 )}
-                {service.hasExtraRequirements && service.extraRequirements.length > 0 && (
+
+                {/* Material Selection */}
+                {service.materials && Array.isArray(service.materials) && service.materials.length > 0 && (
+                  <div className="mb-4 border rounded p-4 bg-gray-50">
+                    <label className="block text-sm font-medium mb-3">Do you want materials as well?</label>
+                    
+                    {/* Yes/No Radio Buttons */}
+                    <div className="space-y-2 mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
+                        <input
+                          type="radio"
+                          name="materials_option"
+                          checked={bookingData.needs_materials === true}
+                          onChange={() => setBookingData({ ...bookingData, needs_materials: true })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm font-medium">Yes, I want materials as well</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-100 rounded">
+                        <input
+                          type="radio"
+                          name="materials_option"
+                          checked={bookingData.needs_materials === false}
+                          onChange={() => setBookingData({ ...bookingData, needs_materials: false })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm font-medium">No, I don't want materials</span>
+                      </label>
+                    </div>
+
+                    {/* Materials List - Always Shown */}
+                    <div className="mt-4">
+                      <p className="text-xs font-semibold text-gray-700 mb-2">Required Materials List:</p>
+                      <div className="space-y-2">
+                        {service.materials.map((material: any, idx: number) => {
+                          const materialName = typeof material === 'object' && material !== null
+                            ? (typeof material.name === 'object' ? translate(material.name) : material.name)
+                            : String(material);
+                          const materialPrice = typeof material === 'object' && material !== null
+                            ? (material.price || material.fee || 0)
+                            : 0;
+                          
+                          return (
+                            <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border">
+                              <span className="text-sm">{materialName}</span>
+                              <span className="text-sm font-semibold text-primary-600">AED {materialPrice.toFixed(2)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Message based on selection */}
+                    {bookingData.needs_materials && (
+                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                        <p className="font-medium">✓ Materials will be included in your order.</p>
+                        <p className="mt-1">Please ensure you have these materials ready when our team arrives.</p>
+                      </div>
+                    )}
+                    {!bookingData.needs_materials && (
+                      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+                        <p className="font-medium">⚠️ Materials not included in order.</p>
+                        <p className="mt-1">You must prepare these materials yourself before our team arrives.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Legacy material selection (if materials array not available) */}
+                {(!service.materials || service.materials.length === 0) && service.material_fee !== undefined && service.material_fee > 0 && (
                   <div>
-                    <label className="block text-sm font-medium mb-1">{t('services.extraRequirements')}</label>
+                    <label className="block text-sm font-medium mb-2">Materials</label>
                     <div className="space-y-2">
-                      {service.extraRequirements.map((extra, idx) => {
-                        const extraName = translate(extra.name);
-                        return (
-                          <label key={idx} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={bookingData.selectedExtras.includes(idx)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setBookingData({
-                                    ...bookingData,
-                                    selectedExtras: [...bookingData.selectedExtras, idx]
-                                  });
-                                } else {
-                                  setBookingData({
-                                    ...bookingData,
-                                    selectedExtras: bookingData.selectedExtras.filter(i => i !== idx)
-                                  });
-                                }
-                              }}
-                              className="rounded"
-                            />
-                            <span className="text-sm">
-                              {extraName} - ${extra.price}
-                            </span>
-                          </label>
-                        );
-                      })}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="materials"
+                          checked={bookingData.needs_materials}
+                          onChange={() => setBookingData({ ...bookingData, needs_materials: true })}
+                          className="w-4 h-4"
+                        />
+                        <span>Yes, include materials (+AED {service.material_fee})</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="materials"
+                          checked={!bookingData.needs_materials}
+                          onChange={() => setBookingData({ ...bookingData, needs_materials: false })}
+                          className="w-4 h-4"
+                        />
+                        <span>No, I'll prepare materials myself</span>
+                      </label>
+                      {!bookingData.needs_materials && service.material_instructions && (
+                        <div className="ml-6 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                          <p className="font-medium">Reminder:</p>
+                          <p>{translate(service.material_instructions)}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
                 <div className="border-t pt-4">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-lg font-semibold">{t('services.totalAmount')}:</span>
-                    <span className="text-2xl font-bold text-primary-600">${totalAmount.toFixed(2)}</span>
+                  {/* Price Breakdown */}
+                  <div className="mb-4 p-3 bg-white rounded border">
+                    <h4 className="font-semibold mb-2">Price Breakdown:</h4>
+                    <div className="space-y-1 text-sm">
+                      {service.pricing_model === 'fixed' ? (
+                        <>
+                          <div className="flex justify-between">
+                            <span>Service Price:</span>
+                            <span>AED {(service.fixed_price || service.price || 0).toFixed(2)}</span>
+                          </div>
+                          {bookingData.needs_materials && priceBreakdown.material_fee > 0 && (
+                            <div className="flex justify-between">
+                              <span>Materials:</span>
+                              <span>AED {priceBreakdown.material_fee.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between">
+                            <span>
+                              Hourly ({bookingData.selected_professionals} pros × {bookingData.selected_hours} hrs):
+                            </span>
+                            <span>
+                              AED {(priceBreakdown.hourly_rate * bookingData.selected_professionals * bookingData.selected_hours).toFixed(2)}
+                            </span>
+                          </div>
+                          {bookingData.needs_materials && priceBreakdown.material_fee > 0 && (
+                            <div className="flex justify-between">
+                              <span>Materials:</span>
+                              <span>AED {priceBreakdown.material_fee.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div className="flex justify-between font-semibold pt-2 border-t mt-2">
+                        <span>Total:</span>
+                        <span>AED {totalAmount.toFixed(2)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div>

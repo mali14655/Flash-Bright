@@ -12,6 +12,10 @@ interface Service {
   _id: string;
   name: string;
   category: string;
+  pricing_model?: 'fixed' | 'configurable';
+  fixed_price?: number;
+  base_fee?: number;
+  hourly_rate_per_pro?: number;
   price: number;
   duration: number;
   description: string;
@@ -88,9 +92,29 @@ export default function Services() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                       {/* Price badge */}
                       <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg z-10">
-                        <span className="text-lg font-bold text-primary-600">${service.price}</span>
-                        <span className="text-xs text-gray-500 ml-1">{t('services.from')}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-lg font-bold text-primary-600">
+                            AED {service.pricing_model === 'fixed' 
+                              ? (service.fixed_price || service.price)
+                              : (service.base_fee || service.price)}
+                          </span>
+                          {service.pricing_model === 'configurable' && (
+                            <span className="text-xs text-gray-500">{t('services.from')}</span>
+                          )}
+                        </div>
                       </div>
+                      {/* Pricing model badge */}
+                      {service.pricing_model && (
+                        <div className="absolute top-3 left-3 z-10">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            service.pricing_model === 'fixed' 
+                              ? 'bg-green-500 text-white' 
+                              : 'bg-blue-500 text-white'
+                          }`}>
+                            {service.pricing_model === 'fixed' ? 'Fixed' : 'Hourly'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   
                   {/* Service Info */}

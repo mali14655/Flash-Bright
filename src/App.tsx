@@ -16,6 +16,7 @@ import AdminCompanyDetails from './pages/AdminCompanyDetails';
 import PartnerDashboard from './pages/PartnerDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import PublicServiceDetails from './pages/PublicServiceDetails';
+import SubCategoryServices from './pages/SubCategoryServices';
 
 function App() {
   const { checkAuth, isAuthenticated, user } = useAuthStore();
@@ -50,6 +51,7 @@ function App() {
           }
         />
         <Route path="/service/:id" element={<PublicServiceDetails />} />
+        <Route path="/subcategory/:id" element={<SubCategoryServices />} />
         <Route
           path="/admin"
           element={
