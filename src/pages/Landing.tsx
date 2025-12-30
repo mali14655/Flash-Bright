@@ -6,7 +6,7 @@ import Card from '../components/ui/Card';
 import Layout from '../components/Layout';
 import api from '../lib/api';
 import { useLanguage } from '../context/LanguageContext';
-import { translateServices, useTranslator } from '../lib/translator';
+import { useTranslator } from '../lib/translator';
 
 // Background images for carousel - using Unsplash cleaning service images
 const backgroundImages = [

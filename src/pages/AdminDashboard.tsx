@@ -166,7 +166,6 @@ export default function AdminDashboard() {
   const [editingSubCategory, setEditingSubCategory] = useState<any>(null);
   const [selectedBooking, setSelectedBooking] = useState<string>('');
   const [selectedPartner, setSelectedPartner] = useState<string>('');
-  const [selectedCategoryForSub, setSelectedCategoryForSub] = useState<string>('');
 
   // Form data
   const [companyForm, setCompanyForm] = useState({ name: '', email: '', phone: '' });
@@ -343,19 +342,14 @@ export default function AdminDashboard() {
 
   const loadSubCategories = async () => {
     try {
-      if (selectedCategoryForSub) {
-        const response = await api.get(`/categories/${selectedCategoryForSub}/subcategories`);
-        setSubCategories(response.data);
-      } else {
-        // Load all subcategories
-        const allCategories = await api.get('/categories');
-        const allSubCategories: any[] = [];
-        for (const cat of allCategories.data) {
-          const subs = await api.get(`/categories/${cat._id}/subcategories`);
-          allSubCategories.push(...subs.data);
-        }
-        setSubCategories(allSubCategories);
+      // Load all subcategories
+      const allCategories = await api.get('/categories');
+      const allSubCategories: any[] = [];
+      for (const cat of allCategories.data) {
+        const subs = await api.get(`/categories/${cat._id}/subcategories`);
+        allSubCategories.push(...subs.data);
       }
+      setSubCategories(allSubCategories);
     } catch (error) {
       toast.error('Failed to load sub-categories');
     }
