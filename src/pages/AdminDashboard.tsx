@@ -171,13 +171,11 @@ export default function AdminDashboard() {
   const [companyForm, setCompanyForm] = useState({ name: '', email: '', phone: '' });
   const [categoryForm, setCategoryForm] = useState({
     name: '',
-    description: '',
     icon: ''
   });
   const [subCategoryForm, setSubCategoryForm] = useState({
     categoryId: '',
     name: '',
-    description: '',
     imageFile: null as File | null,
     imagePreview: '' as string | null
   });
@@ -368,9 +366,19 @@ export default function AdminDashboard() {
   const loadCommission = async () => {
     try {
       const response = await api.get('/commission');
-      setCommissionRate(response.data.rate);
-    } catch (error) {
-      toast.error('Failed to load commission rate');
+      if (response.data && response.data.rate !== undefined) {
+        setCommissionRate(response.data.rate);
+      } else {
+        // Fallback to default if rate is not in response
+        setCommissionRate(0.15);
+      }
+    } catch (error: any) {
+      console.error('Commission load error:', error);
+      // Set default rate on error instead of showing error
+      setCommissionRate(0.15);
+      if (error.response?.status !== 404) {
+        toast.error(error.response?.data?.message || 'Failed to load commission rate');
+      }
     }
   };
 
@@ -870,7 +878,6 @@ export default function AdminDashboard() {
 
       const formData = {
         name: categoryForm.name,
-        description: categoryForm.description,
         icon: categoryForm.icon
       };
 
@@ -888,7 +895,6 @@ export default function AdminDashboard() {
     try {
       const formData = {
         name: categoryForm.name,
-        description: categoryForm.description,
         icon: categoryForm.icon
       };
 
@@ -919,7 +925,6 @@ export default function AdminDashboard() {
     setEditingCategory(null);
     setCategoryForm({
       name: '',
-      description: '',
       icon: ''
     });
   };
@@ -928,8 +933,7 @@ export default function AdminDashboard() {
     setEditingCategory(category);
     setShowCategoryForm(true);
     const name = typeof category.name === 'object' ? (category.name.en || category.name.ar || '') : category.name || '';
-    const description = typeof category.description === 'object' ? (category.description.en || category.description.ar || '') : category.description || '';
-    setCategoryForm({ name, description, icon: category.icon || '' });
+    setCategoryForm({ name, icon: category.icon || '' });
   };
 
   // SubCategory CRUD functions
@@ -947,7 +951,6 @@ export default function AdminDashboard() {
 
       const formData = new FormData();
       formData.append('name', subCategoryForm.name);
-      formData.append('description', subCategoryForm.description);
       formData.append('image', subCategoryForm.imageFile);
 
       await api.post(`/categories/${subCategoryForm.categoryId}/subcategories`, formData, {
@@ -968,7 +971,6 @@ export default function AdminDashboard() {
     try {
       const formData = new FormData();
       formData.append('name', subCategoryForm.name);
-      formData.append('description', subCategoryForm.description);
       if (subCategoryForm.imageFile) {
         formData.append('image', subCategoryForm.imageFile);
       }
@@ -1007,7 +1009,6 @@ export default function AdminDashboard() {
     setSubCategoryForm({
       categoryId: '',
       name: '',
-      description: '',
       imageFile: null,
       imagePreview: null
     });
@@ -1017,11 +1018,9 @@ export default function AdminDashboard() {
     setEditingSubCategory(subCategory);
     setShowSubCategoryForm(true);
     const name = typeof subCategory.name === 'object' ? (subCategory.name.en || subCategory.name.ar || '') : subCategory.name || '';
-    const description = typeof subCategory.description === 'object' ? (subCategory.description.en || subCategory.description.ar || '') : subCategory.description || '';
     setSubCategoryForm({
       categoryId: subCategory.categoryId?._id || subCategory.categoryId || '',
       name,
-      description,
       imageFile: null,
       imagePreview: subCategory.image || null
     });
@@ -1078,9 +1077,12 @@ export default function AdminDashboard() {
   const loadExpiredBookings = async () => {
     try {
       const response = await api.get('/bookings/expired/admin');
-      setExpiredBookings(response.data);
-    } catch (error) {
-      toast.error('Failed to load expired bookings');
+      console.log('Expired bookings response:', response.data);
+      setExpiredBookings(response.data || []);
+    } catch (error: any) {
+      console.error('Error loading expired bookings:', error);
+      toast.error(error.response?.data?.message || 'Failed to load expired bookings');
+      setExpiredBookings([]);
     }
   };
 
@@ -1156,25 +1158,26 @@ export default function AdminDashboard() {
         <p className="text-gray-600">Manage companies, orders, and operations</p>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="flex space-x-8">
+      {/* Tabs - Responsive */}
+      <div className="border-b border-gray-200 mb-6 overflow-x-auto">
+        <nav className="flex space-x-2 sm:space-x-4 md:space-x-8 min-w-max">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm relative ${
+                className={`flex items-center gap-1 sm:gap-2 py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap relative ${
                   activeTab === tab.id
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                {tab.label}
+                <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
                 {tab.badge !== null && tab.badge > 0 && (
-                  <span className="ml-1 px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
+                  <span className="ml-1 px-1.5 sm:px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
                     {tab.badge}
                   </span>
                 )}
@@ -1186,8 +1189,8 @@ export default function AdminDashboard() {
 
       {/* Overview Tab */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
-          <div className="grid md:grid-cols-4 gap-4">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -1294,7 +1297,7 @@ export default function AdminDashboard() {
               <h3 className="text-lg font-semibold mb-4">
                 {editingCompany ? 'Edit Company' : 'Add New Company'}
               </h3>
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   placeholder="Company Name"
                   value={companyForm.name}
@@ -1549,7 +1552,7 @@ export default function AdminDashboard() {
                             </div>
                             <div className="mt-3 space-y-3">
                               <p className="text-sm font-semibold text-gray-700 mb-2">Profile Changes Requested:</p>
-                              <div className="grid md:grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {approval.oldData ? (
                                   <>
                                     {/* Company Name - Always show */}
@@ -2040,7 +2043,7 @@ export default function AdminDashboard() {
               {serviceForm.pricing_model === 'configurable' && (
                 <div className="border rounded p-4 bg-gray-50 mb-4 space-y-4">
                   <h4 className="font-medium mb-3">Configurable Pricing</h4>
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2">Hourly Rate per Professional (AED) *</label>
                       <Input
@@ -2133,7 +2136,7 @@ export default function AdminDashboard() {
                   <h4 className="font-medium">Materials List</h4>
                   
                   {/* Add New Material */}
-                  <div className="grid md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <Input
                       placeholder="Material Name (e.g., 2 brushes) *"
                       value={newMaterial.name}
@@ -2184,7 +2187,7 @@ export default function AdminDashboard() {
             </Card>
           )}
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {services.map((service) => {
               const pricingModel = service.pricing_model || 'fixed';
               const displayPrice = pricingModel === 'fixed' 
@@ -2290,16 +2293,6 @@ export default function AdminDashboard() {
                     onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
-                  <textarea
-                    className="border rounded p-2 w-full"
-                    placeholder="Description"
-                    value={categoryForm.description}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
                 <div className="flex gap-2">
                   <Button onClick={editingCategory ? handleUpdateCategory : handleCreateCategory}>
                     {editingCategory ? 'Update' : 'Create'}
@@ -2343,16 +2336,6 @@ export default function AdminDashboard() {
                     placeholder="Sub-Category Name *"
                     value={subCategoryForm.name}
                     onChange={(e) => setSubCategoryForm({ ...subCategoryForm, name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
-                  <textarea
-                    className="border rounded p-2 w-full"
-                    placeholder="Description"
-                    value={subCategoryForm.description}
-                    onChange={(e) => setSubCategoryForm({ ...subCategoryForm, description: e.target.value })}
-                    rows={3}
                   />
                 </div>
                 <div className="mb-4">
@@ -2404,7 +2387,6 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               {categories.map((category) => {
                 const catName = typeof category.name === 'object' ? (category.name.en || category.name.ar || '') : category.name || '';
-                const catDesc = typeof category.description === 'object' ? (category.description.en || category.description.ar || '') : category.description || '';
                 const categorySubs = subCategories.filter(sub => 
                   sub.categoryId === category._id || sub.categoryId?._id === category._id
                 );
@@ -2413,7 +2395,6 @@ export default function AdminDashboard() {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h4 className="font-semibold">{catName}</h4>
-                        {catDesc && <p className="text-sm text-gray-600">{catDesc}</p>}
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => startEditCategory(category)}>
@@ -2460,10 +2441,10 @@ export default function AdminDashboard() {
 
       {/* Commission Tab */}
       {activeTab === 'commission' && (
-        <div className="space-y-6">
-          <h2 className="text-xl font-semibold">Commission Settings</h2>
-          <Card className="p-6">
-            <div className="max-w-md">
+        <div className="space-y-4 sm:space-y-6">
+          <h2 className="text-lg sm:text-xl font-semibold">Commission Settings</h2>
+          <Card className="p-4 sm:p-6">
+            <div className="max-w-md w-full">
               <label className="block text-sm font-medium mb-2">
                 Commission Rate (0-1)
               </label>
@@ -2474,11 +2455,12 @@ export default function AdminDashboard() {
                 max="1"
                 value={commissionRate}
                 onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
+                className="w-full"
               />
               <p className="text-sm text-gray-600 mt-2">
-                Current rate: {(commissionRate * 100).toFixed(1)}%
+                Current rate: <span className="font-semibold text-primary-600">{(commissionRate * 100).toFixed(1)}%</span>
               </p>
-              <Button onClick={handleUpdateCommission} className="mt-4">
+              <Button onClick={handleUpdateCommission} className="mt-4 w-full sm:w-auto">
                 Update Commission Rate
               </Button>
             </div>
@@ -2646,7 +2628,7 @@ export default function AdminDashboard() {
             {performanceData.map((data) => (
               <Card key={data.partner._id} className="p-6">
                 <h3 className="text-lg font-semibold mb-4">{data.partner.name}</h3>
-                <div className="grid md:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4">
                   <div>
                     <p className="text-sm text-gray-600">Orders Received</p>
                     <p className="text-2xl font-bold">{data.summary?.received || 0}</p>

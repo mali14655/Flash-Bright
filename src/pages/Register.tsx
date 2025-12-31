@@ -7,6 +7,7 @@ import Card from '../components/ui/Card';
 import Layout from '../components/Layout';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../context/LanguageContext';
+import logo from '../asssets/logo.jpeg';
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -45,6 +46,9 @@ export default function Register() {
         <div className="container mx-auto max-w-md">
           <Card className="w-full p-8">
           <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <img src={logo} alt="Flash Bright" className="h-16 w-16 rounded-lg object-cover" />
+            </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('register.title')}</h1>
             <p className="text-gray-600">{t('register.subtitle')}</p>
           </div>

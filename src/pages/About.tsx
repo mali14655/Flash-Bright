@@ -4,6 +4,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Layout from '../components/Layout';
 import { useLanguage } from '../context/LanguageContext';
+import logo from '../asssets/logo.jpeg';
 
 
 export default function About() {
@@ -15,6 +16,9 @@ export default function About() {
       <section className="bg-gradient-to-br from-primary-600 to-primary-700 text-white py-20">
         <div className="container mx-auto px-4">
           <div className="text-center">
+            <div className="flex justify-center mb-6">
+              <img src={logo} alt="Flash Bright" className="h-20 w-20 md:h-24 md:w-24 rounded-lg object-cover" />
+            </div>
             <h1 className="text-5xl font-bold mb-6">{t('about.title')}</h1>
             <p className="text-xl max-w-3xl mx-auto opacity-90">
               {t('about.subtitle')}

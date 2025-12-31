@@ -189,44 +189,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Features */}
-      <section className="container mx-auto px-4 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">
-          {t('common.whyChooseUs')}
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          <div className="text-center p-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-primary-600" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2">{t('common.wideRange')}</h3>
-            <p className="text-gray-600">{t('common.wideRangeText')}</p>
-          </div>
-          <div className="text-center p-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-primary-600" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2">{t('common.verified')}</h3>
-            <p className="text-gray-600">{t('common.verifiedText')}</p>
-          </div>
-          <div className="text-center p-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Clock className="w-8 h-8 text-primary-600" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2">{t('common.flexible')}</h3>
-            <p className="text-gray-600">{t('common.flexibleText')}</p>
-          </div>
-          <div className="text-center p-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Star className="w-8 h-8 text-primary-600" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2">{t('common.quality')}</h3>
-            <p className="text-gray-600">{t('common.qualityText')}</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Categories and Sub-Categories */}
+      {/* Categories and Sub-Categories - Services Section */}
       <section className="bg-gradient-to-b from-white to-gray-50 py-16">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
@@ -261,28 +224,25 @@ export default function Landing() {
                     </div>
                     
                     {/* Sub-Category Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
                       {subCategories.map((subCategory) => {
                         const subName = typeof subCategory.name === 'object' 
                           ? translate(subCategory.name) 
                           : subCategory.name;
-                        const subDesc = typeof subCategory.description === 'object' 
-                          ? translate(subCategory.description) 
-                          : subCategory.description;
                         
                         return (
                           <Card
                             key={subCategory._id}
-                            className="overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group border border-gray-200 bg-white"
+                            className="overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group border border-gray-200 bg-white flex flex-col"
                             onClick={() => handleSubCategoryClick(subCategory._id)}
                           >
-                            {/* Sub-Category Image */}
-                            <div className="relative h-40 md:h-48 overflow-hidden bg-gradient-to-br from-primary-100 to-primary-50">
+                            {/* Sub-Category Image - 4:3 Aspect Ratio */}
+                            <div className="relative w-full aspect-[4/3] overflow-hidden bg-gradient-to-br from-primary-100 to-primary-50">
                               {subCategory.image ? (
                                 <img 
                                   src={subCategory.image} 
                                   alt={subName}
-                                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                   onError={(e) => {
                                     const target = e.target as HTMLImageElement;
                                     target.style.display = 'none';
@@ -290,7 +250,7 @@ export default function Landing() {
                                 />
                               ) : (
                                 <div className="absolute inset-0 w-full h-full flex items-center justify-center">
-                                  <Sparkles className="w-16 h-16 text-primary-400 opacity-50" />
+                                  <Sparkles className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 text-primary-400 opacity-50" />
                                 </div>
                               )}
                               {/* Overlay gradient on hover */}
@@ -298,28 +258,24 @@ export default function Landing() {
                             </div>
                             
                             {/* Sub-Category Info */}
-                            <div className="p-4 md:p-5">
-                              <h3 className="text-base md:text-lg font-bold text-gray-900 mb-1.5 group-hover:text-primary-600 transition-colors line-clamp-2 min-h-[3rem]">
+                            <div className="p-3 sm:p-4 md:p-5 flex flex-col flex-grow">
+                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-900 mb-3 sm:mb-4 group-hover:text-primary-600 transition-colors line-clamp-2 flex-grow">
                                 {subName}
                               </h3>
-                              {subDesc && (
-                                <p className="text-xs md:text-sm text-gray-500 mb-3 line-clamp-2">
-                                  {subDesc}
-                                </p>
-                              )}
                               
                               {/* View Services Button */}
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="w-full text-sm font-semibold border-primary-200 text-primary-600 hover:bg-primary-600 hover:text-white hover:border-primary-600 transition-all duration-200"
+                                className="w-full text-xs sm:text-sm font-semibold border-primary-200 text-primary-600 hover:bg-primary-600 hover:text-white hover:border-primary-600 transition-all duration-200 mt-auto"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleSubCategoryClick(subCategory._id);
                                 }}
                               >
-                                View Services
-                                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                                <span className="hidden sm:inline">View Services</span>
+                                <span className="sm:hidden">View</span>
+                                <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 ml-1 sm:ml-1.5" />
                               </Button>
                             </div>
                           </Card>
@@ -335,6 +291,43 @@ export default function Landing() {
               <p className="text-gray-500">{t('services.loading')}</p>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Features - Why Choose Us */}
+      <section className="container mx-auto px-4 py-16">
+        <h2 className="text-3xl font-bold text-center mb-12">
+          {t('common.whyChooseUs')}
+        </h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="text-center p-6">
+            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Sparkles className="w-8 h-8 text-primary-600" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">{t('common.wideRange')}</h3>
+            <p className="text-gray-600">{t('common.wideRangeText')}</p>
+          </div>
+          <div className="text-center p-6">
+            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-primary-600" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">{t('common.verified')}</h3>
+            <p className="text-gray-600">{t('common.verifiedText')}</p>
+          </div>
+          <div className="text-center p-6">
+            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-8 h-8 text-primary-600" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">{t('common.flexible')}</h3>
+            <p className="text-gray-600">{t('common.flexibleText')}</p>
+          </div>
+          <div className="text-center p-6">
+            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Star className="w-8 h-8 text-primary-600" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">{t('common.quality')}</h3>
+            <p className="text-gray-600">{t('common.qualityText')}</p>
+          </div>
         </div>
       </section>
 

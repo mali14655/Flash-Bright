@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
 interface BreadcrumbItem {
@@ -67,19 +67,30 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
       }
       // If came from home, we don't add services in between
       // The service name will be added by the page component via addBreadcrumb
-      // Don't overwrite existing breadcrumbs for service pages - let addBreadcrumb handle it
-      setBreadcrumbs(newBreadcrumbs);
+      // Set initial breadcrumbs, but don't overwrite if service name is already added
+      setBreadcrumbs((prev) => {
+        // If breadcrumbs already have the service path, keep them (service name was added)
+        const hasServicePath = prev.some(b => path.startsWith(b.path) && b.path !== '/');
+        if (hasServicePath) {
+          return prev;
+        }
+        return newBreadcrumbs;
+      });
       return;
     }
 
     setBreadcrumbs(newBreadcrumbs);
   }, [location.pathname, navigationHistory]);
 
-  const addBreadcrumb = (label: string, path: string) => {
+  const addBreadcrumb = useCallback((label: string, path: string) => {
     setBreadcrumbs((prev) => {
       // Check if breadcrumb already exists - update label if it does
       const existingIndex = prev.findIndex((b) => b.path === path);
       if (existingIndex !== -1) {
+        // Only update if label actually changed to avoid unnecessary re-renders
+        if (prev[existingIndex].label === label) {
+          return prev;
+        }
         // Update existing breadcrumb label
         const updated = [...prev];
         updated[existingIndex] = { label, path };
@@ -88,20 +99,20 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
       // Add new breadcrumb
       return [...prev, { label, path }];
     });
-  };
+  }, []);
 
-  const clearBreadcrumbs = () => {
+  const clearBreadcrumbs = useCallback(() => {
     setBreadcrumbs([]);
-  };
+  }, []);
 
-  const getBackPath = (): string | null => {
+  const getBackPath = useCallback((): string | null => {
     if (navigationHistory.length < 2) {
       return '/';
     }
     // Get the previous path from history
     const previousPath = navigationHistory[navigationHistory.length - 2];
     return previousPath;
-  };
+  }, [navigationHistory]);
 
   return (
     <BreadcrumbContext.Provider
